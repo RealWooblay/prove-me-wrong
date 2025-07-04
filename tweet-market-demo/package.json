@@ -1,12 +1,8 @@
 {
-    "name": "tweet-market-demo",
+    "name": "tweet-card-demo",
     "type": "module",
     "scripts": {
-        "dev": "npx serve public -l 5173",
-        "build": "echo 'static project — nothing to build'"
+        "dev": "npx serve public -l 5173"
     },
-    "dependencies": {
-        "@walletconnect/modal": "^2.7.0",
-        "viem": "^2.31.7"
-    }
+    "dependencies": {}
 }

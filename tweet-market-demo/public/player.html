@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>On-chain Market Widget</title>
+    <title>Demo Player Card</title>
     <style>
         * {
             box-sizing: border-box;
@@ -18,94 +18,46 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 1rem;
-            padding: 1rem
+            justify-content: center;
+            height: 100vh;
+            gap: 1rem
         }
 
         button {
-            padding: .6rem 1.4rem;
+            padding: .7rem 1.6rem;
             border: none;
-            border-radius: 1.5rem;
+            border-radius: 1.6rem;
             background: #3b82f6;
             font-weight: 600;
             color: #fff;
-            cursor: pointer
+            cursor: pointer;
+            transition: transform .1s
         }
 
-        button:disabled {
-            opacity: .4;
-            cursor: default
+        button:hover {
+            transform: scale(1.05)
         }
 
         small {
-            opacity: .7
+            opacity: .7;
+            font-size: .8rem
         }
     </style>
 </head>
 
 <body>
-    <h3 id="title"></h3>
-    <p id="desc" style="font-size:.9rem;text-align:center;max-width:26ch"></p>
+    <h3 style="text-align:center">Is this Player Card<br>rendering for you?</h3>
     <div style="display:flex;gap:.5rem">
-        <button id="yes">YES</button>
-        <button id="no">NO</button>
+        <button onclick="vote('YES')">YES</button>
+        <button onclick="vote('NO')">NO</button>
     </div>
-    <small id="status"></small>
+    <small id="status">Buttons are local-only; no blockchain calls yet.</small>
 
-    <script type="module">
-        import { Web3Modal } from "https://esm.sh/@walletconnect/modal@2";
-        import {
-            createWalletClient,
-            encodeFunctionData,
-            custom
-        } from "https://esm.sh/viem@2";
-
-        /* --- config --- */
-        const WC_PROJECT = "YOUR_WC_PROJECT_ID";            // 🔔 replace after cloning
-        const urlParams = new URLSearchParams(location.search);
-        const id = urlParams.get("id");
-
-        /* --- fetch market meta --- */
-        const market = await fetch(`/api/market/${id}.json`).then(r => r.json());
-        title.textContent = market.title;
-        desc.textContent = market.description;
-
-        /* --- WalletConnect bootstrap --- */
-        const modal = new Web3Modal({
-            projectId: WC_PROJECT,
-            themeVariables: { "--w3m-accent-color": "#3B82F6" }
-        });
-        let provider, client;
-        async function ensureWallet() {
-            if (client) return;
-            provider = await modal.connect();
-            client = createWalletClient({ transport: custom(provider) });
+    <script>
+        function vote(ans) {
+            const s = document.getElementById('status');
+            s.textContent = `You clicked ${ans}!`;
         }
-
-        /* --- vote handler --- */
-        async function vote(choice) {
-            try {
-                await ensureWallet();
-                status.textContent = "Preparing transaction…";
-                const data = encodeFunctionData({
-                    abi: market.abi,
-                    functionName: "vote",
-                    args: [market.id, choice === "YES"]
-                });
-                const hash = await client.sendTransaction({
-                    to: market.contract,
-                    data,
-                    chainId: market.chainId
-                });
-                status.textContent = "Tx sent: " + hash.slice(0, 10) + "…";
-                yes.disabled = no.disabled = true;
-            } catch (e) {
-                console.error(e);
-                status.textContent = "Error: " + e.message;
-            }
-        }
-        yes.onclick = () => vote("YES");
-        no.onclick = () => vote("NO");
     </script>
 </body>
 

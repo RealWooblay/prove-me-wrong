@@ -1,7 +1,7 @@
-## Tweet-Market Demo
+## Tweet Player Card Demo
 
-### 1 · Install & run locally
+### 1 · Run locally
 ```bash
 npm i
-npm run dev          # http://localhost:5173
+npm run dev              # http://localhost:5173/m/demo.html
 ``` 
