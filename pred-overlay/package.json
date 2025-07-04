@@ -1,0 +1,21 @@
+{
+    "name": "pred-overlay",
+    "version": "0.1.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "rm -rf dist && vite build && cp manifest.json dist/ && cp -R icons dist/ && cp src/overlay.css dist/ && cd dist"
+    },
+    "dependencies": {
+        "react": "^18.3.0",
+        "react-dom": "^18.3.0",
+        "viem": "^2.11.0"
+    },
+    "devDependencies": {
+        "@types/react": "^18.2.0",
+        "@types/react-dom": "^18.2.0",
+        "@vitejs/plugin-react": "^4.6.0",
+        "typescript": "^5.4.0",
+        "vite": "^5.2.0"
+    }
+}
