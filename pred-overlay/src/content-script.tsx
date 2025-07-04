@@ -1,4 +1,3 @@
-// content-script.tsx
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 
@@ -6,17 +5,28 @@ console.log('[PredictionOverlay] content script loaded…');
 
 // Configurable domain constant
 const MARKET_DOMAIN = 'your.app'; // <-- change to your real domain!
-const MARKET_LINK_REGEX = new RegExp(`(?:https?://)?${MARKET_DOMAIN.replace('.', '\\.')}\\/m\\/([\\w-]+)`, 'i');
+const MARKET_LINK_REGEX = new RegExp(
+    '(?:https?://)?' + MARKET_DOMAIN.replace('.', '\\.') + '/m/([\\w-]+)',
+    'i'
+);
 
 // Extract market slug from any Twitter link element
 function extractSlug(link: HTMLAnchorElement): string | null {
-    const expanded =
-        link.getAttribute('data-expanded-url') ||
-        link.getAttribute('title') ||
-        link.getAttribute('href') ||
-        '';
-    const m = expanded.match(MARKET_LINK_REGEX);
-    return m ? m[1] : null;
+    const sources = [
+        link.getAttribute('data-expanded-url'),
+        link.getAttribute('title'),
+        link.getAttribute('href'),
+        link.textContent          // NEW: visible text (for shortened t.co)
+    ];
+
+    for (const src of sources) {
+        if (!src) continue;
+        // Strip curly/straight quotes **and whitespace** (spaces, newlines)
+        const cleaned = src.replace(/[“”"'\s]/g, '');
+        const m = cleaned.match(MARKET_LINK_REGEX);
+        if (m) return m[1];
+    }
+    return null;
 }
 
 // Fallback: scan the whole tweet text
@@ -31,6 +41,11 @@ function injectOverlay(tweetNode: HTMLElement, marketId: string) {
     if (tweetNode.querySelector('.pred-overlay-root')) return;
     const shadowHost = document.createElement('div');
     shadowHost.className = 'pred-overlay-root';
+    shadowHost.style.position = 'relative';
+    shadowHost.style.width = '100%';
+    shadowHost.style.display = 'block';
+    shadowHost.style.margin = '0';
+    // Append the overlay card at the end of the tweet
     tweetNode.appendChild(shadowHost);
     const shadow = shadowHost.attachShadow({ mode: 'open' });
     const mount = document.createElement('div');
