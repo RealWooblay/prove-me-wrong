@@ -1,19 +1,44 @@
+version: '3.8'
+
 services:
   generator:
     build:
       context: ./generator
-      platform: linux/amd64
     environment:
-      MODEL_ID: meta-llama/Meta-Llama-3-8B-Instruct
-    ports: [ "8000:8000" ]
+      ASI_API_KEY: ${ASI_API_KEY}
+      PYTHONUNBUFFERED: "1"
+    ports: 
+      - "8000:8000"
+    volumes:
+      - ./generator/markets:/app/markets
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   resolver:
     build:
       context: ./resolver
-      platform: linux/amd64
     environment:
-      MODEL_ID: mistralai/Mistral-7B-Instruct-v0.2
-    ports: [ "8001:8001" ]
-YAML
+      ASI_API_KEY: ${ASI_API_KEY}
+      GENERATOR_API_URL: "http://generator:8000"
+      PYTHONUNBUFFERED: "1"
+    ports: 
+      - "8001:8001"
+    volumes:
+      - ./resolver/resolutions:/app/resolutions
+    depends_on:
+      generator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
-docker compose up --build
+networks:
+  default:
+    name: prediction-markets
