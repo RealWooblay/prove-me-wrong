@@ -1,0 +1,19 @@
+services:
+  generator:
+    build:
+      context: ./generator
+      platform: linux/amd64
+    environment:
+      MODEL_ID: meta-llama/Meta-Llama-3-8B-Instruct
+    ports: [ "8000:8000" ]
+
+  resolver:
+    build:
+      context: ./resolver
+      platform: linux/amd64
+    environment:
+      MODEL_ID: mistralai/Mistral-7B-Instruct-v0.2
+    ports: [ "8001:8001" ]
+YAML
+
+docker compose up --build
