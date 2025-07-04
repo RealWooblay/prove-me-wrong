@@ -2,5 +2,8 @@
     "cleanUrls": true,
     "redirects": [],
     "rewrites": [],
-    "headers": []
+    "headers": [],
+    "buildCommand": "echo 'static project — nothing to build'",
+    "outputDirectory": "public",
+    "framework": null
 }
