@@ -18,5 +18,5 @@ export function buildMarketLink(opts: {
         value: "0",
         chainId: opts.chainId ?? 1
     }));
-    return `https://your-demo.vercel.app/player.html?id=${opts.id}&p=${payload}`;
+    return `https://prove-me-wrong-git-main-wooblay-projects.vercel.app/player.html?id=${opts.id}&p=${payload}`;
 } 
