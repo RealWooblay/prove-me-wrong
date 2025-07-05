@@ -50,6 +50,14 @@ PMW_POOL_ADDRESS = os.getenv("PMW_POOL_ADDRESS", None)
 ADMIN_PRIVATE_KEY = os.getenv("ADMIN_PRIVATE_KEY", None)
 CHAIN_ID = int(os.getenv("CHAIN_ID", 0))
 
+# Debug: Log all environment variables to see what's available
+logger.info("🔍 Environment variables check:")
+logger.info(f"   RPC_URL from env: {'✅ Set' if os.getenv('RPC_URL') else '❌ Not set'}")
+logger.info(f"   PMW_ADDRESS from env: {'✅ Set' if os.getenv('PMW_ADDRESS') else '❌ Not set'}")
+logger.info(f"   PMW_POOL_ADDRESS from env: {'✅ Set' if os.getenv('PMW_POOL_ADDRESS') else '❌ Not set'}")
+logger.info(f"   ADMIN_PRIVATE_KEY from env: {'✅ Set' if os.getenv('ADMIN_PRIVATE_KEY') else '❌ Not set'}")
+logger.info(f"   CHAIN_ID from env: {os.getenv('CHAIN_ID', 'Not set')}")
+
 # ASI-1 Mini API Configuration
 ASI_API_URL = "https://api.asi1.ai/v1/chat/completions"
 ASI_API_KEY = os.getenv("ASI_API_KEY", "sk_a1d55fd6b1ba47ddadc98bd1e8048e56ff00c4736c844a9db4aab791d33f0989")
@@ -967,6 +975,13 @@ def root():
         "service": "Market Generator Agent",
         "version": "1.0.0",
         "model": MODEL_NAME,
+        "env_check": {
+            "RPC_URL": "✅ Set" if os.getenv("RPC_URL") else "❌ Not set",
+            "PMW_ADDRESS": "✅ Set" if os.getenv("PMW_ADDRESS") else "❌ Not set", 
+            "PMW_POOL_ADDRESS": "✅ Set" if os.getenv("PMW_POOL_ADDRESS") else "❌ Not set",
+            "ADMIN_PRIVATE_KEY": "✅ Set" if os.getenv("ADMIN_PRIVATE_KEY") else "❌ Not set",
+            "CHAIN_ID": os.getenv("CHAIN_ID", "Not set")
+        },
         "endpoints": {
             "POST /generate": "Generate a prediction market",
             "GET /markets": "List all markets",
