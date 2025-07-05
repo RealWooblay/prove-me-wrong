@@ -253,12 +253,15 @@ function scanTweets() {
         // Debug: log all links in the article
         const allLinks = article.querySelectorAll<HTMLAnchorElement>('a');
         console.log(`[PredictionOverlay] Found ${allLinks.length} total links in article`);
-        allLinks.forEach((link, index) => {
-            console.log(`[PredictionOverlay] Link ${index}: ${link.href}`);
-        });
 
-        // Look for market links including t.co redirects
+        // Only log links if there are market links found
         const marketLinks = article.querySelectorAll<HTMLAnchorElement>('a[href*="your.app"], a[href*="prove-me-wrong.com"], a[href*="/m/"], a[href*="t.co"]');
+        if (marketLinks.length > 0) {
+            allLinks.forEach((link, index) => {
+                console.log(`[PredictionOverlay] Link ${index}: ${link.href}`);
+            });
+        }
+
         console.log(`[PredictionOverlay] Found ${marketLinks.length} potential market links (including t.co)`);
 
         marketLinks.forEach(async (anchor) => {

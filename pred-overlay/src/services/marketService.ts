@@ -68,8 +68,50 @@ export class MarketService {
     static getInstance(): MarketService {
         if (!MarketService.instance) {
             MarketService.instance = new MarketService();
+            console.log('[MarketService] New instance created');
+        } else {
+            console.log('[MarketService] Using existing instance');
         }
         return MarketService.instance;
+    }
+
+    constructor() {
+        // Load cache from localStorage on initialization
+        this.loadCacheFromStorage();
+    }
+
+    private loadCacheFromStorage() {
+        try {
+            const cached = localStorage.getItem('prediction-market-cache');
+            console.log('[MarketService] localStorage raw data:', cached);
+
+            if (cached) {
+                const data = JSON.parse(cached);
+                console.log('[MarketService] Parsed localStorage data:', data);
+
+                this.marketCache = new Map(Object.entries(data.marketCache || {}));
+                this.titleToMarketCache = new Map(Object.entries(data.titleToMarketCache || {}));
+                this.invalidMarketCache = new Map(Object.entries(data.invalidMarketCache || {}));
+                console.log('[MarketService] Loaded cache from localStorage:', this.getCacheStats());
+            } else {
+                console.log('[MarketService] No cache found in localStorage');
+            }
+        } catch (error) {
+            console.error('[MarketService] Error loading cache from localStorage:', error);
+        }
+    }
+
+    private saveCacheToStorage() {
+        try {
+            const data = {
+                marketCache: Object.fromEntries(this.marketCache),
+                titleToMarketCache: Object.fromEntries(this.titleToMarketCache),
+                invalidMarketCache: Object.fromEntries(this.invalidMarketCache)
+            };
+            localStorage.setItem('prediction-market-cache', JSON.stringify(data));
+        } catch (error) {
+            console.error('[MarketService] Error saving cache to localStorage:', error);
+        }
     }
 
     /**
@@ -146,7 +188,7 @@ export class MarketService {
                 console.log(`[MarketService] Cached invalid market validation for prompt: "${prompt}"`);
             }
 
-            this.getCacheStats();
+            this.saveCacheToStorage(); // Save cache after each validation
             return result;
 
         } catch (error) {
@@ -171,7 +213,7 @@ export class MarketService {
 
             // Cache the error result
             this.invalidMarketCache.set(prompt, result);
-            this.getCacheStats();
+            this.saveCacheToStorage(); // Save cache after each validation
             return result;
         }
     }
@@ -182,16 +224,46 @@ export class MarketService {
      * Later this will read from actual smart contracts
      */
     async getMarketProbabilities(marketId: string): Promise<{ yesProb: number; noProb: number; isValid: boolean }> {
-        console.log(`[MarketService] Getting on-chain probabilities for market ID: ${marketId}`);
+        console.log(`[MarketService] Getting probabilities for market ID: ${marketId}`);
 
+        // First try to get cached market data (from AI validation)
+        const marketData = await this.getMarketData(marketId);
+
+        if (marketData && marketData.validation.is_valid) {
+            // Use AI validation probabilities as base
+            const baseYesProb = marketData.validation.yes_probability * 100;
+            const baseNoProb = marketData.validation.no_probability * 100;
+
+            console.log(`[MarketService] Using AI validation probabilities - YES: ${baseYesProb}%, NO: ${baseNoProb}%`);
+
+            // Add some volatility to simulate real-time trading
+            const volatility = 3; // ±3%
+            const yesProb = Math.max(0, Math.min(100, baseYesProb + (Math.random() - 0.5) * volatility));
+            const noProb = Math.max(0, Math.min(100, baseNoProb + (Math.random() - 0.5) * volatility));
+
+            // Normalize to 100%
+            const total = yesProb + noProb;
+            const normalizedYes = (yesProb / total) * 100;
+            const normalizedNo = (noProb / total) * 100;
+
+            console.log(`[MarketService] Final probabilities - YES: ${Math.round(normalizedYes * 10) / 10}%, NO: ${Math.round(normalizedNo * 10) / 10}%`);
+
+            return {
+                yesProb: Math.round(normalizedYes * 10) / 10, // Round to 1 decimal
+                noProb: Math.round(normalizedNo * 10) / 10,
+                isValid: true
+            };
+        }
+
+        // Fallback to on-chain data if available
         const onChainData = await this.getOnChainData(marketId);
 
         if (!onChainData || !onChainData.isActive) {
-            console.log(`[MarketService] No active on-chain data for market ID: ${marketId}`);
+            console.log(`[MarketService] No valid market data found for market ID: ${marketId}`);
             return { yesProb: 0, noProb: 0, isValid: false };
         }
 
-        console.log(`[MarketService] On-chain probabilities - YES: ${onChainData.yesProbability}%, NO: ${onChainData.noProbability}%`);
+        console.log(`[MarketService] Using on-chain probabilities - YES: ${onChainData.yesProbability}%, NO: ${onChainData.noProbability}%`);
         return {
             yesProb: onChainData.yesProbability,
             noProb: onChainData.noProbability,
@@ -278,11 +350,19 @@ export class MarketService {
      * Get market data from cache or AI generator
      */
     async getMarketData(marketId: string): Promise<MarketData | null> {
-        // Check cache first
+        console.log(`[MarketService] getMarketData called for market ID: ${marketId}`);
+        console.log(`[MarketService] Cache stats:`, this.getCacheStats());
+
+        // Check cache first - this should have the market data from validation
         if (this.marketCache.has(marketId)) {
             const cached = this.marketCache.get(marketId)!;
-            return cached.success && cached.market ? cached.market : null;
+            console.log(`[MarketService] Found market in cache for ID: ${marketId}`);
+            if (cached.success && cached.market) {
+                return cached.market;
+            }
         }
+
+        console.log(`[MarketService] Market not found in cache, trying AI generator for ID: ${marketId}`);
 
         // Try to fetch from AI generator via background script
         try {
@@ -299,13 +379,17 @@ export class MarketService {
             });
 
             if (response.success && response.data) {
+                console.log(`[MarketService] Found market via AI generator for ID: ${marketId}`);
                 const marketData: MarketData = response.data;
                 const marketResponse: MarketResponse = {
                     success: true,
                     market: marketData
                 };
                 this.marketCache.set(marketId, marketResponse);
+                this.saveCacheToStorage(); // Save cache after fetching
                 return marketData;
+            } else {
+                console.log(`[MarketService] Market not found via AI generator for ID: ${marketId}`);
             }
         } catch (error) {
             console.error('Error fetching market data:', error);
@@ -335,6 +419,7 @@ export class MarketService {
             this.titleToMarketCache.clear();
             this.invalidMarketCache.clear();
         }
+        this.saveCacheToStorage(); // Save cache after clearing
     }
 
     /**

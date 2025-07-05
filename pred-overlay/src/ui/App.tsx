@@ -96,11 +96,19 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
             if (validation.success && validation.market) {
                 setIsValidMarket(true);
                 setStatus('Market validated');
+
+                // Get initial probabilities immediately after validation
+                console.log(`[App] Getting initial probabilities for market ID: ${marketId}`);
+                const probabilities = await marketService.getMarketProbabilities(marketId);
+                setYesProb(probabilities.yesProb);
+                setNoProb(probabilities.noProb);
+                console.log(`[App] Initial probabilities set - YES: ${probabilities.yesProb}%, NO: ${probabilities.noProb}%`);
+
             } else {
                 if (validation.error && validation.error.includes('Cannot connect to AI generator')) {
                     setIsValidMarket(true);
-                    setYesProb(50);
-                    setNoProb(50);
+                    setYesProb(0);
+                    setNoProb(0);
                     setStatus('AI generator offline - showing fallback data');
                 } else {
                     setIsValidMarket(false);
