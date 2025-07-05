@@ -61,6 +61,9 @@ class MarketData(BaseModel):
     validation: MarketValidation
     created_at: str
     status: str = "active"  # active, resolved, expired
+    outcome: Optional[str] = None  # YES, NO, or None
+    resolved_at: Optional[str] = None
+    resolution_confidence: Optional[float] = None
 
 class MarketResponse(BaseModel):
     success: bool
@@ -535,12 +538,38 @@ def get_market_outcome(market_id: str):
     market = markets[market_id]
     
     # Check if market is resolved
-    if market.status != "resolved":
-        return {"outcome": "undefined", "status": market.status}
+    if market.status == "resolved" and market.outcome:
+        return {"outcome": market.outcome, "status": market.status, "confidence": market.resolution_confidence}
+    elif market.status == "expired":
+        return {"outcome": "expired", "status": market.status}
+    else:
+        return {"outcome": "undefined", "status": market.status, "message": "Market not yet resolved"}
+
+@app.put("/markets/{market_id}/outcome")
+def update_market_outcome(market_id: str, outcome_data: dict):
+    """Update the outcome of a market (called by resolver)"""
+    markets = load_markets()
+    if market_id not in markets:
+        raise HTTPException(status_code=404, detail="Market not found")
     
-    # For now, return undefined since we don't have actual resolution logic
-    # In a real implementation, this would check the actual outcome
-    return {"outcome": "undefined", "status": market.status, "message": "Market not yet resolved"}
+    market = markets[market_id]
+    
+    # Update market with outcome data
+    market.status = "resolved"
+    market.outcome = outcome_data.get("outcome")  # YES, NO, or EXPIRED
+    market.resolved_at = outcome_data.get("resolved_at", datetime.now().isoformat())
+    market.resolution_confidence = outcome_data.get("confidence")
+    
+    # Save updated markets
+    save_markets(markets)
+    
+    logger.info(f"Updated market {market_id} with outcome: {market.outcome}")
+    
+    return {
+        "success": True,
+        "market": market.dict(),
+        "message": f"Market {market_id} resolved as {market.outcome}"
+    }
 
 @app.delete("/markets/{market_id}")
 def delete_market(market_id: str):
