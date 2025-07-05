@@ -262,7 +262,7 @@ def deploy_market(
         # Sign and send transaction
         signed_txn = w3.eth.account.sign_transaction(transaction, ADMIN_PRIVATE_KEY)
         logger.info("📤 Sending transaction...")
-        tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+        tx_hash = w3.eth.send_raw_transaction(signed_txn.raw_transaction)
         logger.info(f"   Transaction hash: {tx_hash.hex()}")
         
         logger.info("⏳ Waiting for transaction receipt...")
