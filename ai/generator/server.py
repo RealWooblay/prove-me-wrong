@@ -947,7 +947,14 @@ def health():
                 "status": "healthy",
                 "asi_api_configured": bool(ASI_API_KEY),
                 "model": MODEL_NAME,
-                "stored_markets": market_count
+                "stored_markets": market_count,
+                "env_check": {
+                    "RPC_URL": "✅ Set" if os.getenv("RPC_URL") else "❌ Not set",
+                    "PMW_ADDRESS": "✅ Set" if os.getenv("PMW_ADDRESS") else "❌ Not set",
+                    "PMW_POOL_ADDRESS": "✅ Set" if os.getenv("PMW_POOL_ADDRESS") else "❌ Not set",
+                    "ADMIN_PRIVATE_KEY": "✅ Set" if os.getenv("ADMIN_PRIVATE_KEY") else "❌ Not set",
+                    "CHAIN_ID": os.getenv("CHAIN_ID", "Not set")
+                }
             }
         except Exception as e:
             logger.error(f"Health check DB error: {e}")
@@ -955,7 +962,14 @@ def health():
                 "status": "unhealthy",
                 "error": str(e),
                 "asi_api_configured": bool(ASI_API_KEY),
-                "model": MODEL_NAME
+                "model": MODEL_NAME,
+                "env_check": {
+                    "RPC_URL": "✅ Set" if os.getenv("RPC_URL") else "❌ Not set",
+                    "PMW_ADDRESS": "✅ Set" if os.getenv("PMW_ADDRESS") else "❌ Not set",
+                    "PMW_POOL_ADDRESS": "✅ Set" if os.getenv("PMW_POOL_ADDRESS") else "❌ Not set",
+                    "ADMIN_PRIVATE_KEY": "✅ Set" if os.getenv("ADMIN_PRIVATE_KEY") else "❌ Not set",
+                    "CHAIN_ID": os.getenv("CHAIN_ID", "Not set")
+                }
             }
         finally:
             db.close()
@@ -965,7 +979,14 @@ def health():
             "status": "unhealthy",
             "error": str(e),
             "asi_api_configured": bool(ASI_API_KEY),
-            "model": MODEL_NAME
+            "model": MODEL_NAME,
+            "env_check": {
+                "RPC_URL": "✅ Set" if os.getenv("RPC_URL") else "❌ Not set",
+                "PMW_ADDRESS": "✅ Set" if os.getenv("PMW_ADDRESS") else "❌ Not set",
+                "PMW_POOL_ADDRESS": "✅ Set" if os.getenv("PMW_POOL_ADDRESS") else "❌ Not set",
+                "ADMIN_PRIVATE_KEY": "✅ Set" if os.getenv("ADMIN_PRIVATE_KEY") else "❌ Not set",
+                "CHAIN_ID": os.getenv("CHAIN_ID", "Not set")
+            }
         }
 
 @app.get("/")
