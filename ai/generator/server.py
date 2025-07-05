@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import requests
 import json
@@ -15,6 +16,14 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Market Generator Agent", version="1.0.0")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Or ["http://localhost:3000", "http://localhost:9000"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # ASI-1 Mini API Configuration
 ASI_API_URL = "https://api.asi1.ai/v1/chat/completions"
 ASI_API_KEY = os.getenv("ASI_API_KEY", "sk_a1d55fd6b1ba47ddadc98bd1e8048e56ff00c4736c844a9db4aab791d33f0989")
@@ -28,6 +37,7 @@ ARCHIVED_MARKETS_FILE = "archived/markets.json"
 
 class MarketRequest(BaseModel):
     prompt: str = Field(..., description="The market prompt to analyze")
+    market_id: Optional[str] = Field(None, description="Optional custom market ID")
     tweet_url: Optional[str] = Field(None, description="Optional tweet URL for context")
 
 class MarketValidation(BaseModel):
@@ -213,6 +223,19 @@ async def analyze_market_prompt(prompt: str) -> MarketValidation:
     - If the outcome is not clearly binary, mark as invalid
     - If there's no clear resolution date, mark as invalid
 
+    **IMPORTANT: Check if the event described has ALREADY HAPPENED. For example:**
+    - "Will Bitcoin hit 100k before 2026?" - INVALID because Bitcoin already hit $100k in March 2024
+    - "Will Bitcoin hit 200k before 2026?" - VALID because it hasn't happened yet
+    - "Will the US have a recession in 2024?" - INVALID because 2024 is over
+    - "Will the US have a recession in 2025?" - VALID because it's in the future
+
+    **PAST EVENT DETECTION:**
+    - Research if the specific event mentioned has already occurred
+    - For price targets: Check if the asset has already reached that price
+    - For time-based events: Check if the time period has already passed
+    - For elections: Check if the election has already happened
+    - For sports events: Check if the game/tournament has already occurre
+
     RELIABLE SOURCES: Include major news outlets, official government sources, financial data providers, or other credible sources that would definitively report on this outcome. You need at least 3 sources.
 
     RESOLUTION DATE: Set to a reasonable date when the outcome will be known. Must be AFTER {current_date}. If it's a "before X date" type market, set auto_expire to true.
@@ -349,11 +372,12 @@ async def analyze_market_prompt(prompt: str) -> MarketValidation:
             auto_expire=False
         )
 
-def create_market_data(prompt: str, validation: MarketValidation) -> MarketData:
+def create_market_data(prompt: str, validation: MarketValidation, market_id: Optional[str] = None) -> MarketData:
     """Create market data based on validation results"""
     
-    # Generate unique ID
-    market_id = str(uuid.uuid4())
+    # Generate unique ID if market_id is not provided
+    if not market_id:
+        market_id = str(uuid.uuid4())
     
     # Set close time based on resolution date or default to 30 days
     if validation.resolution_date:
@@ -390,6 +414,16 @@ async def generate_market(request: MarketRequest):
     try:
         logger.info(f"Processing market request: {request.prompt}")
         
+        # Check if market with this ID already exists
+        if request.market_id:
+            markets = load_markets()
+            if request.market_id in markets:
+                logger.info(f"Market with ID {request.market_id} already exists, returning existing market")
+                return MarketResponse(
+                    success=True,
+                    market=markets[request.market_id]
+                )
+        
         # Analyze market prompt using ASI-1 Mini
         validation = await analyze_market_prompt(request.prompt)
         logger.info(f"Market validation: valid={validation.is_valid}, confidence={validation.confidence}")
@@ -401,7 +435,7 @@ async def generate_market(request: MarketRequest):
             )
         
         # Create market data
-        market_data = create_market_data(request.prompt, validation)
+        market_data = create_market_data(request.prompt, validation, request.market_id)
         
         # Store market locally
         markets = load_markets()
@@ -488,9 +522,25 @@ def get_market(market_id: str):
     """Get a specific market by ID"""
     markets = load_markets()
     if market_id in markets:
-        return markets[market_id].dict()
-    else:
+        return markets[market_id]
+    raise HTTPException(status_code=404, detail="Market not found")
+
+@app.get("/markets/{market_id}/outcome")
+def get_market_outcome(market_id: str):
+    """Get the outcome of a market (true, false, or undefined)"""
+    markets = load_markets()
+    if market_id not in markets:
         raise HTTPException(status_code=404, detail="Market not found")
+    
+    market = markets[market_id]
+    
+    # Check if market is resolved
+    if market.status != "resolved":
+        return {"outcome": "undefined", "status": market.status}
+    
+    # For now, return undefined since we don't have actual resolution logic
+    # In a real implementation, this would check the actual outcome
+    return {"outcome": "undefined", "status": market.status, "message": "Market not yet resolved"}
 
 @app.delete("/markets/{market_id}")
 def delete_market(market_id: str):
@@ -499,9 +549,8 @@ def delete_market(market_id: str):
     if market_id in markets:
         del markets[market_id]
         save_markets(markets)
-        return {"success": True, "message": "Market deleted"}
-    else:
-        raise HTTPException(status_code=404, detail="Market not found")
+        return {"message": "Market deleted successfully"}
+    raise HTTPException(status_code=404, detail="Market not found")
 
 @app.get("/health")
 def health():

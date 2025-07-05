@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prediction Markets Viewer</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+
+        .header {
+            background: #1a1a1a;
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #2563eb;
+        }
+
+        .stat-label {
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .controls {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .controls button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+
+        .controls button:hover {
+            background: #1d4ed8;
+        }
+
+        .controls button.secondary {
+            background: #6b7280;
+        }
+
+        .controls button.secondary:hover {
+            background: #4b5563;
+        }
+
+        .market-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+            gap: 20px;
+        }
+
+        .market-card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #2563eb;
+        }
+
+        .market-card.invalid {
+            border-left-color: #dc2626;
+            opacity: 0.7;
+        }
+
+        .market-card.expired {
+            border-left-color: #f59e0b;
+            opacity: 0.8;
+        }
+
+        .market-title {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #1f2937;
+        }
+
+        .market-description {
+            color: #6b7280;
+            margin-bottom: 15px;
+            line-height: 1.5;
+        }
+
+        .market-meta {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+            font-size: 0.9em;
+        }
+
+        .meta-item {
+            background: #f3f4f6;
+            padding: 8px 12px;
+            border-radius: 5px;
+        }
+
+        .meta-label {
+            font-weight: bold;
+            color: #374151;
+        }
+
+        .meta-value {
+            color: #6b7280;
+        }
+
+        .validation-info {
+            background: #f0f9ff;
+            border: 1px solid #bae6fd;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+
+        .validation-info.invalid {
+            background: #fef2f2;
+            border-color: #fecaca;
+        }
+
+        .probabilities {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .prob-bar {
+            flex: 1;
+            background: #e5e7eb;
+            border-radius: 5px;
+            overflow: hidden;
+            height: 30px;
+            position: relative;
+        }
+
+        .prob-fill {
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+
+        .prob-yes {
+            background: #10b981;
+        }
+
+        .prob-no {
+            background: #ef4444;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+
+        .error {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #dc2626;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .filter-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .filter-controls select {
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 5px;
+            background: white;
+        }
+
+        .search-box {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 5px;
+            background: white;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>🤖 Prediction Markets Viewer</h1>
+        <p>View all markets generated by the AI Generator</p>
+    </div>
+
+    <div class="stats">
+        <div class="stat-card">
+            <div class="stat-number" id="total-markets">-</div>
+            <div class="stat-label">Total Markets</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" id="active-markets">-</div>
+            <div class="stat-label">Active Markets</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" id="valid-markets">-</div>
+            <div class="stat-label">Valid Markets</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" id="archived-markets">-</div>
+            <div class="stat-label">Archived Markets</div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button onclick="loadMarkets()">🔄 Refresh Markets</button>
+        <button onclick="archiveExpired()" class="secondary">🗂️ Archive Expired</button>
+        <button onclick="clearAllMarkets()" class="secondary">🗑️ Clear All Markets</button>
+        <div class="filter-controls">
+            <select id="status-filter" onchange="filterMarkets()">
+                <option value="all">All Status</option>
+                <option value="active">Active Only</option>
+                <option value="archived">Archived Only</option>
+            </select>
+            <select id="validity-filter" onchange="filterMarkets()">
+                <option value="all">All Validity</option>
+                <option value="valid">Valid Only</option>
+                <option value="invalid">Invalid Only</option>
+            </select>
+            <input type="text" id="search-box" class="search-box" placeholder="Search markets..."
+                oninput="filterMarkets()">
+        </div>
+    </div>
+
+    <div id="error-message" class="error" style="display: none;"></div>
+
+    <div id="loading" class="loading">
+        <div>Loading markets...</div>
+    </div>
+
+    <div id="markets-container" class="market-grid" style="display: none;"></div>
+
+    <script>
+        let allMarkets = [];
+        let filteredMarkets = [];
+
+        async function loadMarkets() {
+            try {
+                showLoading(true);
+                hideError();
+
+                const response = await fetch('http://localhost:8000/markets');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                allMarkets = data.markets || [];
+                filteredMarkets = [...allMarkets];
+
+                updateStats();
+                filterMarkets();
+                showLoading(false);
+            } catch (error) {
+                console.error('Error loading markets:', error);
+                showError(`Failed to load markets: ${error.message}`);
+                showLoading(false);
+            }
+        }
+
+        function updateStats() {
+            const total = allMarkets.length;
+            const active = allMarkets.filter(m => m.status === 'active').length;
+            const valid = allMarkets.filter(m => m.validation?.is_valid).length;
+            const archived = allMarkets.filter(m => m.status !== 'active').length;
+
+            document.getElementById('total-markets').textContent = total;
+            document.getElementById('active-markets').textContent = active;
+            document.getElementById('valid-markets').textContent = valid;
+            document.getElementById('archived-markets').textContent = archived;
+        }
+
+        function filterMarkets() {
+            const statusFilter = document.getElementById('status-filter').value;
+            const validityFilter = document.getElementById('validity-filter').value;
+            const searchTerm = document.getElementById('search-box').value.toLowerCase();
+
+            filteredMarkets = allMarkets.filter(market => {
+                // Status filter
+                if (statusFilter === 'active' && market.status !== 'active') return false;
+                if (statusFilter === 'archived' && market.status === 'active') return false;
+
+                // Validity filter
+                if (validityFilter === 'valid' && !market.validation?.is_valid) return false;
+                if (validityFilter === 'invalid' && market.validation?.is_valid) return false;
+
+                // Search filter
+                if (searchTerm) {
+                    const searchText = `${market.title} ${market.description} ${market.prompt}`.toLowerCase();
+                    if (!searchText.includes(searchTerm)) return false;
+                }
+
+                return true;
+            });
+
+            renderMarkets();
+        }
+
+        function renderMarkets() {
+            const container = document.getElementById('markets-container');
+
+            if (filteredMarkets.length === 0) {
+                container.innerHTML = '<div class="loading">No markets found matching the current filters.</div>';
+                container.style.display = 'block';
+                return;
+            }
+
+            container.innerHTML = filteredMarkets.map(market => `
+                <div class="market-card ${!market.validation?.is_valid ? 'invalid' : ''} ${market.status !== 'active' ? 'expired' : ''}">
+                    <div class="market-title">${market.title}</div>
+                    <div class="market-description">${market.description}</div>
+                    
+                    <div class="market-meta">
+                        <div class="meta-item">
+                            <div class="meta-label">Status</div>
+                            <div class="meta-value">${market.status}</div>
+                        </div>
+                        <div class="meta-item">
+                            <div class="meta-label">Created</div>
+                            <div class="meta-value">${new Date(market.created_at).toLocaleDateString()}</div>
+                        </div>
+                        <div class="meta-item">
+                            <div class="meta-label">Resolution</div>
+                            <div class="meta-value">${market.close_time_iso.split('T')[0]}</div>
+                        </div>
+                        <div class="meta-item">
+                            <div class="meta-label">Confidence</div>
+                            <div class="meta-value">${Math.round((market.validation?.confidence || 0) * 100)}%</div>
+                        </div>
+                    </div>
+
+                    <div class="validation-info ${!market.validation?.is_valid ? 'invalid' : ''}">
+                        <strong>Validation:</strong> ${market.validation?.is_valid ? '✅ Valid' : '❌ Invalid'}
+                        <br>
+                        <small>${market.validation?.reasoning || 'No reasoning provided'}</small>
+                    </div>
+
+                    ${market.validation?.is_valid ? `
+                        <div class="probabilities">
+                            <div class="prob-bar">
+                                <div class="prob-fill prob-yes" style="width: ${(market.validation.yes_probability * 100)}%">
+                                    YES: ${Math.round(market.validation.yes_probability * 100)}%
+                                </div>
+                            </div>
+                            <div class="prob-bar">
+                                <div class="prob-fill prob-no" style="width: ${(market.validation.no_probability * 100)}%">
+                                    NO: ${Math.round(market.validation.no_probability * 100)}%
+                                </div>
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    <div style="margin-top: 10px; font-size: 0.8em; color: #6b7280;">
+                        <strong>Sources:</strong> ${(market.validation?.reliable_sources || []).join(', ')}
+                    </div>
+                </div>
+            `).join('');
+
+            container.style.display = 'grid';
+        }
+
+        async function archiveExpired() {
+            try {
+                const response = await fetch('http://localhost:8000/archive-expired', { method: 'POST' });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const result = await response.json();
+                alert(`Archived ${result.archived_count || 0} expired markets`);
+                loadMarkets();
+            } catch (error) {
+                console.error('Error archiving markets:', error);
+                alert(`Error archiving markets: ${error.message}`);
+            }
+        }
+
+        async function clearAllMarkets() {
+            if (!confirm('Are you sure you want to delete ALL markets? This cannot be undone.')) {
+                return;
+            }
+
+            try {
+                const markets = await fetch('http://localhost:8000/markets').then(r => r.json());
+                const deletePromises = markets.markets.map(market =>
+                    fetch(`http://localhost:8000/markets/${market.id}`, { method: 'DELETE' })
+                );
+
+                await Promise.all(deletePromises);
+                alert('All markets deleted');
+                loadMarkets();
+            } catch (error) {
+                console.error('Error clearing markets:', error);
+                alert(`Error clearing markets: ${error.message}`);
+            }
+        }
+
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+            document.getElementById('markets-container').style.display = show ? 'none' : 'grid';
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+
+        function hideError() {
+            document.getElementById('error-message').style.display = 'none';
+        }
+
+        // Load markets on page load
+        document.addEventListener('DOMContentLoaded', loadMarkets);
+    </script>
+</body>
+
+</html>

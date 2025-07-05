@@ -10,8 +10,12 @@
         "https://twitter.com/*",
         "https://mobile.twitter.com/*",
         "https://x.com/*",
-        "https://mobile.x.com/*"
+        "https://mobile.x.com/*",
+        "http://localhost:8000/*"
     ],
+    "background": {
+        "service_worker": "background.js"
+    },
     "content_scripts": [
         {
             "matches": [
