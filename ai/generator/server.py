@@ -14,6 +14,8 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import get_db, init_db, Market, SessionLocal
+from web3 import Web3
+from eth_account import Account
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -31,6 +33,13 @@ app.add_middleware(
 
 # Localhost Configuration
 LOCALHOST_URL = os.getenv("LOCALHOST_URL", None)
+
+# Blockchain Configuration
+RPC_URL = os.getenv("RPC_URL", None)
+PMW_ADDRESS = os.getenv("PMW_ADDRESS", None)
+PMW_POOL_ADDRESS = os.getenv("PMW_POOL_ADDRESS", None)
+ADMIN_PRIVATE_KEY = os.getenv("ADMIN_PRIVATE_KEY", None)
+CHAIN_ID = int(os.getenv("CHAIN_ID", 0))
 
 # ASI-1 Mini API Configuration
 ASI_API_URL = "https://api.asi1.ai/v1/chat/completions"
@@ -81,6 +90,73 @@ def get_asi_headers():
         'Accept': 'application/json',
         'Authorization': f'bearer {ASI_API_KEY}'
     }
+
+def get_web3_instance():
+    """Get Web3 instance for blockchain interactions"""
+    if not RPC_URL:
+        logger.warning("RPC_URL not configured, blockchain operations will be skipped")
+        return None
+    
+    try:
+        w3 = Web3(Web3.HTTPProvider(RPC_URL))
+        if not w3.is_connected():
+            logger.error("Failed to connect to blockchain")
+            return None
+        return w3
+    except Exception as e:
+        logger.error(f"Error connecting to blockchain: {e}")
+        return None
+
+def get_contract_abi():
+    """Get the ProveMeWrong contract ABI"""
+    # This would typically be loaded from a file or environment variable
+    # For now, we'll include the createMarket function ABI
+    return [
+            {
+        "inputs": [
+            {
+            "internalType": "bytes32",
+            "name": "marketId",
+            "type": "bytes32"
+            },
+            {
+            "internalType": "bytes32",
+            "name": "requestHash",
+            "type": "bytes32"
+            },
+            {
+            "internalType": "string",
+            "name": "name",
+            "type": "string"
+            },
+            {
+            "internalType": "string",
+            "name": "symbol",
+            "type": "string"
+            },
+            {
+            "internalType": "uint256",
+            "name": "yesPrice",
+            "type": "uint256"
+            },
+            {
+            "internalType": "uint256",
+            "name": "noPrice",
+            "type": "uint256"
+            },
+            {
+            "internalType": "address",
+            "name": "pool",
+            "type": "address"
+            }
+        ],
+        "name": "createMarket",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+        },                      
+    ]
+
 def deploy_market(
     market_id: str,
     title: str,
