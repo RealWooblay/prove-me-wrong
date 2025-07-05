@@ -45,7 +45,7 @@ MODEL_NAME = "asi1-mini"
 
 # Generator API configuration
 GENERATOR_API_URL = os.getenv("GENERATOR_API_URL", "https://prove-me-wrong-production.up.railway.app")
-RAILWAY_URL = os.getenv("RAILWAY_URL", "https://prove-me-wrong-production.up.railway.app")
+RESOLUTIONS_API_URL = os.getenv("RESOLUTIONS_API_URL", "https://prove-me-wrong-production.up.railway.app")
 
 # Blockchain Configuration
 RPC_URL = os.getenv("RPC_URL", None)
@@ -268,21 +268,23 @@ def prepare_fdc_request(
     """Prepare a request for the Flare FDC"""
     
     try:
+        body = {
+            "attestationType": "0x494a736f6e417069000000000000000000000000000000000000000000000000",
+            "sourceId": "0x5745423200000000000000000000000000000000000000000000000000000000",
+            "requestBody": {
+                "url": url,
+                "postprocessJq": ".",
+                "abi_signature": "{\"components\": [{\"internalType\": \"uint256\",\"name\": \"outcome\",\"type\": \"uint256\"}],\"name\": \"task\",\"type\": \"tuple\"}"
+            }
+        }
+
         response = requests.post(
             "https://jq-verifier-test.flare.rocks/JsonApi/prepareRequest",
             headers={
                 "X-API-KEY": "flare-oxford-2025",
                 "Content-Type": "application/json"
             },
-            json={
-                "attestationType": "0x494a736f6e417069000000000000000000000000000000000000000000000000",
-                "sourceId": "0x5745423200000000000000000000000000000000000000000000000000000000",
-                "requestBody": {
-                    "url": url,
-                    "postprocessJq": "{outcome: .outcome}",
-                    "abi_signature": '{"components": [ {"internalType": "uint256", "name": "outcome", "type": "uint256"} ],"name": "task", "type": "tuple"}'
-                }
-            }
+            json=body
         )
         
         if not response.ok:
@@ -749,6 +751,7 @@ async def resolve_market(request: ResolutionRequest, db: Session = Depends(get_d
         
         market = markets[request.market_id]
         
+        """
         # Check if already resolved
         resolutions = load_resolutions_from_db(db)
         if request.market_id in resolutions and not request.force_resolve:
@@ -778,12 +781,18 @@ async def resolve_market(request: ResolutionRequest, db: Session = Depends(get_d
         
         # Store resolution in database
         save_resolution_to_db(db, resolution)
+        """
+
+        url = f"{RESOLUTIONS_API_URL}/resolver/resolutions/{market.id}/outcome"
+
+        # Resolve the market onchain
+        resolve_market_onchain(market.id, url)  
         
-        logger.info(f"Market resolved: {resolution.outcome} (confidence: {resolution.confidence})")
+        #logger.info(f"Market resolved: {resolution.outcome} (confidence: {resolution.confidence})")
         
         return ResolutionResponse(
             success=True,
-            resolution=resolution
+            resolution=None
         )
         
     except Exception as e:
@@ -814,6 +823,12 @@ async def resolve_all_markets(db: Session = Depends(get_db)):
             if market_id in resolutions:
                 continue
             
+            url = f"{RESOLUTIONS_API_URL}/resolver/resolutions/{market_id}/outcome"
+
+            # Resolve the market onchain
+            resolve_market_onchain(market_id, url)   
+
+            """
             # Check for auto-expiration first
             if check_auto_expiration(market):
                 resolution = ResolutionResult(
@@ -839,7 +854,7 @@ async def resolve_all_markets(db: Session = Depends(get_db)):
                     evidence_sources = await search_for_evidence(market)
                     resolution = await analyze_outcome(market, evidence_sources)
 
-                    url = f"{RAILWAY_URL}/resolver/resolutions/{market_id}/outcome"
+                    url = f"{RESOLUTIONS_API_URL}/resolver/resolutions/{market_id}/outcome"
                     
                     if resolution.outcome in ["YES", "NO"]:
                         save_resolution_to_db(db, resolution)
@@ -866,6 +881,7 @@ async def resolve_all_markets(db: Session = Depends(get_db)):
                         "outcome": "ERROR", 
                         "error": str(e)
                     })
+            """
         
         logger.info(f"Batch resolution complete. Processed {len(results)} markets")
         

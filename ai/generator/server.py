@@ -41,8 +41,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Railway URL Configuration
-RAILWAY_URL = os.getenv("RAILWAY_URL", "https://prove-me-wrong-production.up.railway.app")
+RESOLUTIONS_API_URL = os.getenv("RESOLUTIONS_API_URL", "https://prove-me-wrong-production.up.railway.app")
 
 # Blockchain Configuration
 RPC_URL = os.getenv("RPC_URL", None)
@@ -216,8 +215,8 @@ def deploy_market(
             "{}" + 
             "{}" + 
             "{}" + 
-            "{outcome: .outcome}" + 
-            '{"components": [ {"internalType": "uint256", "name": "outcome", "type": "uint256"} ],"name": "task", "type": "tuple"}'
+            "." + 
+            "{\"components\": [{\"internalType\": \"uint256\",\"name\": \"outcome\",\"type\": \"uint256\"}],\"name\": \"task\",\"type\": \"tuple\"}"
         )
         logger.info(f"   Request hash: {request_hash.hex()}")
         
@@ -655,7 +654,7 @@ async def generate_market(request: MarketRequest, db: Session = Depends(get_db))
         
         logger.info(f"✅ Market created and stored: {market_data.id}")
 
-        url = f"{RAILWAY_URL}/resolver/resolutions/{market_data.id}/outcome"
+        url = f"{RESOLUTIONS_API_URL}/resolver/resolutions/{market_data.id}/outcome"
         logger.info(f"🔗 Resolution URL: {url}")
 
         # Deploy the market to the blockchain
