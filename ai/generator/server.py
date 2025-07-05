@@ -246,7 +246,7 @@ def deploy_market(
         logger.info("📝 Building transaction...")
         # Build transaction
         transaction = contract.functions.createMarket(
-            Web3.keccak(text=market_id),
+            Web3.keccak(primitive=Web3.to_bytes(text=market_id)),
             request_hash,
             int(yes_price),  # Explicitly convert to int
             int(no_price),   # Explicitly convert to int
