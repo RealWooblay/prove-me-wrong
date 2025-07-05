@@ -34,7 +34,7 @@ async function handleAIGeneratorRequest(request, sendResponse) {
             requestOptions.body = JSON.stringify(payload);
         }
 
-        const response = await fetch(`http://localhost:8000${url}`, requestOptions);
+        const response = await fetch(`https://prove-me-wrong-production.up.railway.app${url}`, requestOptions);
 
         if (!response.ok) {
             throw new Error(`AI Generator API error: ${response.status} ${response.statusText}`);

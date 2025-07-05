@@ -285,13 +285,27 @@
                 showLoading(true);
                 hideError();
 
-                const response = await fetch('http://localhost:8000/markets');
+                const response = await fetch('/generator/markets');
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
 
                 const data = await response.json();
                 allMarkets = data.markets || [];
+                // Fetch outcomes for each market
+                await Promise.all(allMarkets.map(async (market) => {
+                    try {
+                        const outcomeResp = await fetch(`/resolver/resolutions/${market.id}/outcome`);
+                        if (outcomeResp.ok) {
+                            const outcomeData = await outcomeResp.json();
+                            market.outcome = outcomeData.outcome;
+                        } else {
+                            market.outcome = null;
+                        }
+                    } catch {
+                        market.outcome = null;
+                    }
+                }));
                 filteredMarkets = [...allMarkets];
 
                 updateStats();
@@ -373,6 +387,10 @@
                             <div class="meta-label">Confidence</div>
                             <div class="meta-value">${Math.round((market.validation?.confidence || 0) * 100)}%</div>
                         </div>
+                        <div class="meta-item">
+                            <div class="meta-label">Outcome</div>
+                            <div class="meta-value">${market.outcome === 0 ? '❌ No' : market.outcome === 1 ? '✅ Yes' : market.outcome === 2 ? '🤷 Insufficient Evidence' : '—'}</div>
+                        </div>
                     </div>
 
                     <div class="validation-info ${!market.validation?.is_valid ? 'invalid' : ''}">
@@ -407,7 +425,7 @@
 
         async function archiveExpired() {
             try {
-                const response = await fetch('http://localhost:8000/archive-expired', { method: 'POST' });
+                const response = await fetch('/generator/archive-expired', { method: 'POST' });
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
@@ -427,9 +445,9 @@
             }
 
             try {
-                const markets = await fetch('http://localhost:8000/markets').then(r => r.json());
+                const markets = await fetch('/generator/markets').then(r => r.json());
                 const deletePromises = markets.markets.map(market =>
-                    fetch(`http://localhost:8000/markets/${market.id}`, { method: 'DELETE' })
+                    fetch(`/generator/markets/${market.id}`, { method: 'DELETE' })
                 );
 
                 await Promise.all(deletePromises);

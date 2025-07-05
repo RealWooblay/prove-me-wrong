@@ -1,8 +1,8 @@
 // Configuration for the prediction market overlay extension
 
 export const config = {
-    // AI Generator API URL - change this to point to your AI generator service
-    AI_GENERATOR_URL: 'http://localhost:8000',
+    // AI Generator API URL - Railway deployment
+    AI_GENERATOR_URL: 'https://prove-me-wrong-production.up.railway.app',
 
     // Market data refresh interval (in milliseconds)
     REFRESH_INTERVAL: 10000, // 10 seconds

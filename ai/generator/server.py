@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import requests
@@ -9,9 +9,11 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 import logging
 import uuid
-from web3 import Web3
-from eth_account import Account
-import hashlib
+from sqlalchemy.orm import Session
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from database import get_db, init_db, Market, SessionLocal
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -35,18 +37,7 @@ ASI_API_URL = "https://api.asi1.ai/v1/chat/completions"
 ASI_API_KEY = os.getenv("ASI_API_KEY", "sk_a1d55fd6b1ba47ddadc98bd1e8048e56ff00c4736c844a9db4aab791d33f0989")
 MODEL_NAME = "asi1-mini"
 
-# Blockchain Configuration
-RPC_URL = os.getenv("RPC_URL", None)
-PMW_ADDRESS = os.getenv("PMW_ADDRESS", None)
-PMW_POOL_ADDRESS = os.getenv("PMW_POOL_ADDRESS", None)
-ADMIN_PRIVATE_KEY = os.getenv("ADMIN_PRIVATE_KEY", None)
-CHAIN_ID = int(os.getenv("CHAIN_ID", 0))
-
-# Local storage for markets
-MARKETS_FILE = "markets.json"
-MARKETS_DIR = "markets"
-ACTIVE_MARKETS_FILE = "active/markets.json"
-ARCHIVED_MARKETS_FILE = "archived/markets.json"
+# Database storage for markets (replaces file storage)
 
 class MarketRequest(BaseModel):
     prompt: str = Field(..., description="The market prompt to analyze")
@@ -77,7 +68,6 @@ class MarketData(BaseModel):
     outcome: Optional[str] = None  # YES, NO, or None
     resolved_at: Optional[str] = None
     resolution_confidence: Optional[float] = None
-    blockchain_deployed: Optional[bool] = None  # Whether market was deployed to blockchain
 
 class MarketResponse(BaseModel):
     success: bool
@@ -91,73 +81,6 @@ def get_asi_headers():
         'Accept': 'application/json',
         'Authorization': f'bearer {ASI_API_KEY}'
     }
-
-def get_web3_instance():
-    """Get Web3 instance for blockchain interactions"""
-    if not RPC_URL or RPC_URL == "https://sepolia.infura.io/v3/your-project-id":
-        logger.warning("RPC_URL not configured, blockchain operations will be skipped")
-        return None
-    
-    try:
-        w3 = Web3(Web3.HTTPProvider(RPC_URL))
-        if not w3.is_connected():
-            logger.error("Failed to connect to blockchain")
-            return None
-        return w3
-    except Exception as e:
-        logger.error(f"Error connecting to blockchain: {e}")
-        return None
-
-def get_contract_abi():
-    """Get the ProveMeWrong contract ABI"""
-    # This would typically be loaded from a file or environment variable
-    # For now, we'll include the createMarket function ABI
-    return [
-            {
-        "inputs": [
-            {
-            "internalType": "bytes32",
-            "name": "marketId",
-            "type": "bytes32"
-            },
-            {
-            "internalType": "bytes32",
-            "name": "requestHash",
-            "type": "bytes32"
-            },
-            {
-            "internalType": "string",
-            "name": "name",
-            "type": "string"
-            },
-            {
-            "internalType": "string",
-            "name": "symbol",
-            "type": "string"
-            },
-            {
-            "internalType": "uint256",
-            "name": "yesPrice",
-            "type": "uint256"
-            },
-            {
-            "internalType": "uint256",
-            "name": "noPrice",
-            "type": "uint256"
-            },
-            {
-            "internalType": "address",
-            "name": "pool",
-            "type": "address"
-            }
-        ],
-        "name": "createMarket",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-        },                      
-    ]
-
 def deploy_market(
     market_id: str,
     title: str,
@@ -247,108 +170,96 @@ def deploy_market(
     except Exception as e:
         logger.error(f"Error deploying market to blockchain: {e}")
         return False
-
-def ensure_markets_directory():
-    """Ensure the markets directory structure exists"""
-    if not os.path.exists(MARKETS_DIR):
-        os.makedirs(MARKETS_DIR)
-    if not os.path.exists(os.path.join(MARKETS_DIR, "active")):
-        os.makedirs(os.path.join(MARKETS_DIR, "active"))
-    if not os.path.exists(os.path.join(MARKETS_DIR, "archived")):
-        os.makedirs(os.path.join(MARKETS_DIR, "archived"))
-
-def load_markets() -> Dict[str, MarketData]:
-    """Load markets from local storage"""
-    ensure_markets_directory()
-    
-    # Load active markets
-    active_file = os.path.join(MARKETS_DIR, ACTIVE_MARKETS_FILE)
-    archived_file = os.path.join(MARKETS_DIR, ARCHIVED_MARKETS_FILE)
-    
+      
+def load_markets_from_db(db: Session) -> Dict[str, MarketData]:
+    """Load markets from database"""
     markets = {}
-    
-    # Load active markets
-    if os.path.exists(active_file):
-        try:
-            with open(active_file, 'r') as f:
-                data = json.load(f)
-                for market_id, market_data in data.items():
-                    markets[market_id] = MarketData(**market_data)
-        except Exception as e:
-            logger.error(f"Error loading active markets: {e}")
-    
-    # Load archived markets (for backward compatibility and reference)
-    if os.path.exists(archived_file):
-        try:
-            with open(archived_file, 'r') as f:
-                data = json.load(f)
-                for market_id, market_data in data.items():
-                    markets[market_id] = MarketData(**market_data)
-        except Exception as e:
-            logger.error(f"Error loading archived markets: {e}")
-    
-    # Backward compatibility: load from old single file if it exists
-    old_file = os.path.join(MARKETS_DIR, MARKETS_FILE)
-    if os.path.exists(old_file) and not markets:
-        try:
-            with open(old_file, 'r') as f:
-                data = json.load(f)
-                for market_id, market_data in data.items():
-                    markets[market_id] = MarketData(**market_data)
-        except Exception as e:
-            logger.error(f"Error loading old markets file: {e}")
+    try:
+        db_markets = db.query(Market).all()
+        for db_market in db_markets:
+            market_data = {
+                "id": db_market.id,
+                "title": db_market.title,
+                "description": db_market.description,
+                "prompt": db_market.prompt,
+                "close_time_iso": db_market.close_time_iso,
+                "outcomes": db_market.outcomes,
+                "initial_prob": db_market.initial_prob,
+                "validation": db_market.validation,
+                "created_at": db_market.created_at,
+                "status": db_market.status,
+                "outcome": db_market.outcome,
+                "resolved_at": db_market.resolved_at,
+                "resolution_confidence": db_market.resolution_confidence
+            }
+            markets[db_market.id] = MarketData(**market_data)
+    except Exception as e:
+        logger.error(f"Error loading markets from database: {e}")
     
     return markets
 
-def save_markets(markets: Dict[str, MarketData]):
-    """Save markets to local storage, organizing by status"""
-    ensure_markets_directory()
-    
-    active_markets = {}
-    archived_markets = {}
-    
-    # Separate markets by status
-    for market_id, market in markets.items():
-        if market.status == "active":
-            active_markets[market_id] = market.dict()
+def save_market_to_db(db: Session, market: MarketData):
+    """Save market to database"""
+    try:
+        db_market = Market(
+            id=market.id,
+            title=market.title,
+            description=market.description,
+            prompt=market.prompt,
+            close_time_iso=market.close_time_iso,
+            outcomes=market.outcomes,
+            initial_prob=market.initial_prob,
+            validation=market.validation.dict(),
+            created_at=market.created_at,
+            status=market.status,
+            outcome=market.outcome,
+            resolved_at=market.resolved_at,
+            resolution_confidence=market.resolution_confidence
+        )
+        
+        # Check if market exists
+        existing_market = db.query(Market).filter(Market.id == market.id).first()
+        if existing_market:
+            # Update existing market
+            for key, value in market.dict().items():
+                if key == "validation":
+                    setattr(existing_market, key, market.validation.dict())
+                else:
+                    setattr(existing_market, key, value)
         else:
-            archived_markets[market_id] = market.dict()
-    
-    # Save active markets
-    active_file = os.path.join(MARKETS_DIR, ACTIVE_MARKETS_FILE)
-    try:
-        with open(active_file, 'w') as f:
-            json.dump(active_markets, f, indent=2)
+            # Add new market
+            db.add(db_market)
+        
+        db.commit()
+        logger.info(f"Saved market to database: {market.id}")
     except Exception as e:
-        logger.error(f"Error saving active markets: {e}")
-    
-    # Save archived markets
-    archived_file = os.path.join(MARKETS_DIR, ARCHIVED_MARKETS_FILE)
-    try:
-        with open(archived_file, 'w') as f:
-            json.dump(archived_markets, f, indent=2)
-    except Exception as e:
-        logger.error(f"Error saving archived markets: {e}")
+        db.rollback()
+        logger.error(f"Error saving market to database: {e}")
+        raise
 
-def archive_expired_markets():
-    """Move expired markets to archived status"""
-    markets = load_markets()
+
+def archive_expired_markets(db: Session):
+    """Move expired markets to archived status in database"""
     current_time = datetime.now()
     updated = False
     
-    for market_id, market in markets.items():
-        if market.status == "active":
+    try:
+        active_markets = db.query(Market).filter(Market.status == "active").all()
+        for db_market in active_markets:
             try:
-                close_time = datetime.fromisoformat(market.close_time_iso.replace('Z', '+00:00'))
+                close_time = datetime.fromisoformat(db_market.close_time_iso.replace('Z', '+00:00'))
                 if close_time <= current_time:
-                    market.status = "expired"
+                    db_market.status = "expired"
                     updated = True
-                    logger.info(f"Archived expired market: {market.title}")
+                    logger.info(f"Archived expired market: {db_market.title}")
             except Exception as e:
                 logger.error(f"Error checking market expiration: {e}")
-    
-    if updated:
-        save_markets(markets)
+        
+        if updated:
+            db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error archiving expired markets: {e}")
     
     return updated
 
@@ -578,7 +489,7 @@ def create_market_data(prompt: str, validation: MarketValidation, market_id: Opt
     )
 
 @app.post("/generate", response_model=MarketResponse)
-async def generate_market(request: MarketRequest):
+async def generate_market(request: MarketRequest, db: Session = Depends(get_db)):
     """Generate a prediction market based on the prompt"""
     
     if not ASI_API_KEY:
@@ -589,13 +500,25 @@ async def generate_market(request: MarketRequest):
         
         # Check if market with this ID already exists
         if request.market_id:
-            markets = load_markets()
-            if request.market_id in markets:
+            existing_market = db.query(Market).filter(Market.id == request.market_id).first()
+            if existing_market:
                 logger.info(f"Market with ID {request.market_id} already exists, returning existing market")
-                return MarketResponse(
-                    success=True,
-                    market=markets[request.market_id]
+                market_data = MarketData(
+                    id=existing_market.id,
+                    title=existing_market.title,
+                    description=existing_market.description,
+                    prompt=existing_market.prompt,
+                    close_time_iso=existing_market.close_time_iso,
+                    outcomes=existing_market.outcomes,
+                    initial_prob=existing_market.initial_prob,
+                    validation=MarketValidation(**existing_market.validation),
+                    created_at=existing_market.created_at,
+                    status=existing_market.status,
+                    outcome=existing_market.outcome,
+                    resolved_at=existing_market.resolved_at,
+                    resolution_confidence=existing_market.resolution_confidence
                 )
+                return MarketResponse(success=True, market=market_data)
         
         # Analyze market prompt using ASI-1 Mini
         validation = await analyze_market_prompt(request.prompt)
@@ -610,14 +533,11 @@ async def generate_market(request: MarketRequest):
         # Create market data
         market_data = create_market_data(request.prompt, validation, request.market_id)
         
-        # Store market locally
-        markets = load_markets()
-        markets[market_data.id] = market_data
-        save_markets(markets)
+        # Store market in database
+        save_market_to_db(db, market_data)
         
         logger.info(f"Market created and stored: {market_data.id}")
 
-        # TODO: Localhost replacement
         url = f"{LOCALHOST_URL}/resolutions/{market_data.id}/outcome"
 
         # Deploy the market to the blockchain
@@ -654,10 +574,10 @@ async def generate_market(request: MarketRequest):
         )
 
 @app.post("/archive-expired")
-async def archive_expired():
+async def archive_expired(db: Session = Depends(get_db)):
     """Manually trigger archiving of expired markets"""
     try:
-        updated = archive_expired_markets()
+        updated = archive_expired_markets(db)
         return {
             "success": True,
             "message": f"Archived {updated} expired markets" if updated else "No expired markets to archive",
@@ -668,28 +588,64 @@ async def archive_expired():
         raise HTTPException(status_code=500, detail=f"Error archiving markets: {str(e)}")
 
 @app.get("/markets/active")
-async def get_active_markets():
+async def get_active_markets(db: Session = Depends(get_db)):
     """Get only active markets"""
     try:
-        markets = load_markets()
-        active_markets = {market_id: market for market_id, market in markets.items() if market.status == "active"}
+        db_markets = db.query(Market).filter(Market.status == "active").all()
+        markets = []
+        for db_market in db_markets:
+            market_data = MarketData(
+                id=db_market.id,
+                title=db_market.title,
+                description=db_market.description,
+                prompt=db_market.prompt,
+                close_time_iso=db_market.close_time_iso,
+                outcomes=db_market.outcomes,
+                initial_prob=db_market.initial_prob,
+                validation=MarketValidation(**db_market.validation),
+                created_at=db_market.created_at,
+                status=db_market.status,
+                outcome=db_market.outcome,
+                resolved_at=db_market.resolved_at,
+                resolution_confidence=db_market.resolution_confidence
+            )
+            markets.append(market_data)
+        
         return {
-            "total": len(active_markets),
-            "markets": list(active_markets.values())
+            "total": len(markets),
+            "markets": markets
         }
     except Exception as e:
         logger.error(f"Error getting active markets: {e}")
         raise HTTPException(status_code=500, detail=f"Error loading markets: {str(e)}")
 
 @app.get("/markets/archived")
-async def get_archived_markets():
+async def get_archived_markets(db: Session = Depends(get_db)):
     """Get only archived markets"""
     try:
-        markets = load_markets()
-        archived_markets = {market_id: market for market_id, market in markets.items() if market.status != "active"}
+        db_markets = db.query(Market).filter(Market.status != "active").all()
+        markets = []
+        for db_market in db_markets:
+            market_data = MarketData(
+                id=db_market.id,
+                title=db_market.title,
+                description=db_market.description,
+                prompt=db_market.prompt,
+                close_time_iso=db_market.close_time_iso,
+                outcomes=db_market.outcomes,
+                initial_prob=db_market.initial_prob,
+                validation=MarketValidation(**db_market.validation),
+                created_at=db_market.created_at,
+                status=db_market.status,
+                outcome=db_market.outcome,
+                resolved_at=db_market.resolved_at,
+                resolution_confidence=db_market.resolution_confidence
+            )
+            markets.append(market_data)
+        
         return {
-            "total": len(archived_markets),
-            "markets": list(archived_markets.values())
+            "total": len(markets),
+            "markets": markets
         }
     except Exception as e:
         logger.error(f"Error getting archived markets: {e}")
@@ -697,105 +653,158 @@ async def get_archived_markets():
 
 @app.on_event("startup")
 async def startup_event():
-    """Clean up expired markets on startup"""
+    """Initialize database and clean up expired markets on startup"""
     try:
-        updated = archive_expired_markets()
-        if updated:
-            logger.info(f"Archived {updated} expired markets on startup")
+        init_db()
+        logger.info("Database initialized successfully")
+        
+        # Archive expired markets
+        db = SessionLocal()
+        try:
+            updated = archive_expired_markets(db)
+            if updated:
+                logger.info(f"Archived {updated} expired markets on startup")
+        finally:
+            db.close()
     except Exception as e:
-        logger.error(f"Error during startup cleanup: {e}")
+        logger.error(f"Error during startup: {e}")
 
 @app.get("/markets")
-def list_markets():
+def list_markets(db: Session = Depends(get_db)):
     """List all stored markets"""
-    markets = load_markets()
+    db_markets = db.query(Market).all()
+    markets = []
+    for db_market in db_markets:
+        market_data = MarketData(
+            id=db_market.id,
+            title=db_market.title,
+            description=db_market.description,
+            prompt=db_market.prompt,
+            close_time_iso=db_market.close_time_iso,
+            outcomes=db_market.outcomes,
+            initial_prob=db_market.initial_prob,
+            validation=MarketValidation(**db_market.validation),
+            created_at=db_market.created_at,
+            status=db_market.status,
+            outcome=db_market.outcome,
+            resolved_at=db_market.resolved_at,
+            resolution_confidence=db_market.resolution_confidence
+        )
+        markets.append(market_data)
+    
     return {
         "total": len(markets),
-        "markets": [market.dict() for market in markets.values()]
+        "markets": [market.dict() for market in markets]
     }
 
 @app.get("/markets/{market_id}")
-def get_market(market_id: str):
+def get_market(market_id: str, db: Session = Depends(get_db)):
     """Get a specific market by ID"""
-    markets = load_markets()
-    if market_id in markets:
-        return markets[market_id]
+    db_market = db.query(Market).filter(Market.id == market_id).first()
+    if db_market:
+        market_data = MarketData(
+            id=db_market.id,
+            title=db_market.title,
+            description=db_market.description,
+            prompt=db_market.prompt,
+            close_time_iso=db_market.close_time_iso,
+            outcomes=db_market.outcomes,
+            initial_prob=db_market.initial_prob,
+            validation=MarketValidation(**db_market.validation),
+            created_at=db_market.created_at,
+            status=db_market.status,
+            outcome=db_market.outcome,
+            resolved_at=db_market.resolved_at,
+            resolution_confidence=db_market.resolution_confidence
+        )
+        return market_data
     raise HTTPException(status_code=404, detail="Market not found")
 
 @app.get("/markets/{market_id}/outcome")
-def get_market_outcome(market_id: str):
+def get_market_outcome(market_id: str, db: Session = Depends(get_db)):
     """Get the outcome of a market (true, false, or undefined)"""
-    markets = load_markets()
-    if market_id not in markets:
+    db_market = db.query(Market).filter(Market.id == market_id).first()
+    if not db_market:
         raise HTTPException(status_code=404, detail="Market not found")
     
-    market = markets[market_id]
-    
     # Check if market is resolved
-    if market.status == "resolved" and market.outcome:
-        if market.outcome == "YES":
+    if db_market.status == "resolved" and db_market.outcome:
+        if db_market.outcome == "YES":
             return {"outcome": True}
-        elif market.outcome == "NO":
+        elif db_market.outcome == "NO":
             return {"outcome": False}
         else:
             return {"outcome": False}  # Treat any other outcome as false
-    elif market.status == "expired":
+    elif db_market.status == "expired":
         return {"outcome": False}  # Expired markets are false
     else:
         return {"outcome": "undefined"}  # Market not yet resolved
 
 @app.put("/markets/{market_id}/outcome")
-def update_market_outcome(market_id: str, outcome_data: dict):
+def update_market_outcome(market_id: str, outcome_data: dict, db: Session = Depends(get_db)):
     """Update the outcome of a market (called by resolver)"""
-    markets = load_markets()
-    if market_id not in markets:
+    db_market = db.query(Market).filter(Market.id == market_id).first()
+    if not db_market:
         raise HTTPException(status_code=404, detail="Market not found")
     
-    market = markets[market_id]
-    
     # Update market with outcome data
-    market.status = "resolved"
-    market.outcome = outcome_data.get("outcome")  # YES, NO, or EXPIRED
-    market.resolved_at = outcome_data.get("resolved_at", datetime.now().isoformat())
-    market.resolution_confidence = outcome_data.get("confidence")
+    db_market.status = "resolved"
+    db_market.outcome = outcome_data.get("outcome")  # YES, NO, or EXPIRED
+    db_market.resolved_at = outcome_data.get("resolved_at", datetime.now().isoformat())
+    db_market.resolution_confidence = outcome_data.get("confidence")
     
-    # Save updated markets
-    save_markets(markets)
+    # Save updated market
+    db.commit()
     
-    logger.info(f"Updated market {market_id} with outcome: {market.outcome}")
+    logger.info(f"Updated market {market_id} with outcome: {db_market.outcome}")
     
     return {
         "success": True,
-        "market": market.dict(),
-        "message": f"Market {market_id} resolved as {market.outcome}"
+        "message": f"Market {market_id} resolved as {db_market.outcome}"
     }
 
 @app.delete("/markets/{market_id}")
-def delete_market(market_id: str):
+def delete_market(market_id: str, db: Session = Depends(get_db)):
     """Delete a market by ID"""
-    markets = load_markets()
-    if market_id in markets:
-        del markets[market_id]
-        save_markets(markets)
+    db_market = db.query(Market).filter(Market.id == market_id).first()
+    if db_market:
+        db.delete(db_market)
+        db.commit()
         return {"message": "Market deleted successfully"}
     raise HTTPException(status_code=404, detail="Market not found")
-
-
 
 @app.get("/health")
 def health():
     """Health check endpoint"""
-    markets = load_markets()
-    w3 = get_web3_instance()
-    
-    return {
-        "status": "healthy",
-        "asi_api_configured": bool(ASI_API_KEY),
-        "blockchain_configured": bool(w3 and ADMIN_PRIVATE_KEY and PMW_ADDRESS != "0x0000000000000000000000000000000000000000"),
-        "blockchain_connected": bool(w3 and w3.is_connected()) if w3 else False,
-        "model": MODEL_NAME,
-        "stored_markets": len(markets)
-    }
+    try:
+        # Try to get a database session
+        db = SessionLocal()
+        try:
+            market_count = db.query(Market).count()
+            return {
+                "status": "healthy",
+                "asi_api_configured": bool(ASI_API_KEY),
+                "model": MODEL_NAME,
+                "stored_markets": market_count
+            }
+        except Exception as e:
+            logger.error(f"Health check DB error: {e}")
+            return {
+                "status": "unhealthy",
+                "error": str(e),
+                "asi_api_configured": bool(ASI_API_KEY),
+                "model": MODEL_NAME
+            }
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Health check error: {e}")
+        return {
+            "status": "unhealthy",
+            "error": str(e),
+            "asi_api_configured": bool(ASI_API_KEY),
+            "model": MODEL_NAME
+        }
 
 @app.get("/")
 def root():
@@ -804,9 +813,8 @@ def root():
         "service": "Market Generator Agent",
         "version": "1.0.0",
         "model": MODEL_NAME,
-        "blockchain_enabled": bool(ADMIN_PRIVATE_KEY and PMW_ADDRESS != "0x0000000000000000000000000000000000000000"),
         "endpoints": {
-            "POST /generate": "Generate a prediction market (with blockchain deployment)",
+            "POST /generate": "Generate a prediction market",
             "GET /markets": "List all markets",
             "GET /markets/{id}": "Get specific market",
             "DELETE /markets/{id}": "Delete market",
