@@ -181,19 +181,19 @@ def deploy_market(
     w3 = get_web3_instance()
     if not w3:
         logger.error("❌ Web3 not available, skipping blockchain deployment")
-        return False
+        raise Exception("Web3 not available - RPC_URL may not be configured")
     
     if ADMIN_PRIVATE_KEY is None:
         logger.error("❌ ADMIN_PRIVATE_KEY not configured, skipping blockchain deployment")
-        return False
+        raise Exception("ADMIN_PRIVATE_KEY not configured")
     
     if PMW_ADDRESS is None:
         logger.error("❌ PMW_ADDRESS not configured, skipping blockchain deployment")
-        return False
+        raise Exception("PMW_ADDRESS not configured")
 
     if PMW_POOL_ADDRESS is None:
         logger.error("❌ PMW_POOL_ADDRESS not configured, skipping blockchain deployment")
-        return False
+        raise Exception("PMW_POOL_ADDRESS not configured")
     
     try:
         logger.info("🔑 Creating account from private key...")
@@ -261,7 +261,7 @@ def deploy_market(
         # Sign and send transaction
         signed_txn = w3.eth.account.sign_transaction(transaction, ADMIN_PRIVATE_KEY)
         logger.info("📤 Sending transaction...")
-        tx_hash = w3.eth.send_raw_transaction(signed_txn.raw_transaction)
+        tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
         logger.info(f"   Transaction hash: {tx_hash.hex()}")
         
         logger.info("⏳ Waiting for transaction receipt...")
