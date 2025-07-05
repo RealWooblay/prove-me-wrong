@@ -649,11 +649,11 @@ def get_market_outcome(market_id: str):
     
     # Check if market is resolved
     if resolution.outcome == "YES":
-        return {"outcome": True}
+        return {"outcome": 1}
     elif resolution.outcome == "NO":
-        return {"outcome": False}
+        return {"outcome": 0}
     else:
-        return {"outcome": "undefined"}  # INSUFFICIENT_EVIDENCE, EXPIRED, etc.
+        return {"outcome": 2}  # INSUFFICIENT_EVIDENCE, EXPIRED, etc.
 
 @app.get("/health")
 def health():

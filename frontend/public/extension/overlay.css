@@ -1,0 +1,101 @@
+.p-4 {
+    padding: 1rem;
+}
+
+.bg-slate-900 {
+    background: #0f172a;
+}
+
+.text-white {
+    color: #fff;
+}
+
+.rounded-xl {
+    border-radius: 1rem;
+}
+
+.flex {
+    display: flex;
+}
+
+.flex-col {
+    flex-direction: column;
+}
+
+.items-center {
+    align-items: center;
+}
+
+.gap-2 {
+    gap: .5rem;
+}
+
+.shadow-xl {
+    box-shadow: 0 4px 24px #0008;
+}
+
+.font-bold {
+    font-weight: bold;
+}
+
+.text-lg {
+    font-size: 1.125rem;
+}
+
+.mb-1 {
+    margin-bottom: .25rem;
+}
+
+.mb-2 {
+    margin-bottom: .5rem;
+}
+
+.text-xs {
+    font-size: .75rem;
+}
+
+.opacity-70 {
+    opacity: .7;
+}
+
+.px-4 {
+    padding-left: 1rem;
+    padding-right: 1rem;
+}
+
+.py-2 {
+    padding-top: .5rem;
+    padding-bottom: .5rem;
+}
+
+.rounded-full {
+    border-radius: 9999px;
+}
+
+.bg-blue-500 {
+    background: #3b82f6;
+}
+
+.bg-blue-600 {
+    background: #2563eb;
+}
+
+.bg-red-500 {
+    background: #ef4444;
+}
+
+.bg-red-600 {
+    background: #dc2626;
+}
+
+.hover\:bg-blue-600:hover {
+    background: #2563eb;
+}
+
+.hover\:bg-red-600:hover {
+    background: #dc2626;
+}
+
+.min-h-\[1.5em\] {
+    min-height: 1.5em;
+}
