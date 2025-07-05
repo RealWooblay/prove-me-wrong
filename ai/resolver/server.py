@@ -97,7 +97,7 @@ def get_asi_headers():
 
 def get_web3_instance():
     """Get Web3 instance for blockchain interactions"""
-    if not RPC_URL or RPC_URL == "https://sepolia.infura.io/v3/your-project-id":
+    if not RPC_URL:
         logger.warning("RPC_URL not configured, blockchain operations will be skipped")
         return None
     
@@ -357,16 +357,25 @@ def resolve_market_onchain(market_id: str, url: str) -> bool:
         signed_attestation_txn = w3.eth.account.sign_transaction(attestation_tx, ADMIN_PRIVATE_KEY)
         attestation_tx_hash = w3.eth.send_raw_transaction(signed_attestation_txn.rawTransaction)
         attestation_receipt = w3.eth.wait_for_transaction_receipt(attestation_tx_hash)
-        
         block_number = attestation_receipt.get('blockNumber')
+        # Get block details to extract timestamp
+        block = w3.eth.get_block(block_number)
+        block_timestamp = block.get('timestamp')
         logger.info(f"Attestation transaction receipt: {attestation_receipt}")
-        logger.info(f"Attestation block number: {block_number}, tx: {attestation_tx_hash.hex()}")
+        logger.info(f"Attestation block number: {block_number}, timestamp: {block_timestamp}, tx: {attestation_tx_hash.hex()}")
         
+        if block_timestamp is None:
+            logger.error("Block timestamp is None")
+            return False
+
         if attestation_receipt["status"] != 1:
             logger.error(f"Attestation transaction failed: {attestation_tx_hash.hex()}")
-            return False     
+            return False
 
-        
+        voting_round_id = (block_timestamp - 1658430000) / 90
+        logger.info(f"Voting round ID: {voting_round_id}")
+
+        return True
     except Exception as e:
         logger.error(f"Error resolving market on blockchain: {e}")
         return False
