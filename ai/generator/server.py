@@ -60,7 +60,6 @@ MODEL_NAME = "asi1-mini"
 class MarketRequest(BaseModel):
     prompt: str = Field(..., description="The market prompt to analyze")
     market_id: Optional[str] = Field(None, description="Optional custom market ID")
-    tweet_url: Optional[str] = Field(None, description="Optional tweet URL for context")
 
 class MarketValidation(BaseModel):
     is_valid: bool
