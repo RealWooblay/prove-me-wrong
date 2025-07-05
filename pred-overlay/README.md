@@ -38,7 +38,7 @@ Edit `src/config/config.ts` to customize:
 ```typescript
 export const config = {
     // AI Generator API URL
-    AI_GENERATOR_URL: 'http://localhost:8000',
+    AI_GENERATOR_URL: 'https://prove-me-wrong-production.up.railway.app',
     
     // Market data refresh interval
     REFRESH_INTERVAL: 10000, // 10 seconds
