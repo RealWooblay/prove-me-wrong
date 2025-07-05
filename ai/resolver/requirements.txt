@@ -8,6 +8,8 @@ python-multipart==0.0.6
 lxml==4.9.3
 html5lib==1.1
 schedule==1.2.0
+web3==6.15.1
+eth-account==0.10.0 
 sqlalchemy==2.0.23
 psycopg2-binary==2.9.9
-alembic==1.13.1 
+alembic==1.13.1

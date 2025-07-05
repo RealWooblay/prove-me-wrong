@@ -210,8 +210,7 @@ contract ProveMeWrong {
 
     function resolveMarket(
         bytes32 marketId,
-        IWeb2Json.Proof calldata data,
-        bytes32 requestHashSalt
+        IWeb2Json.Proof calldata data
     ) external {
         if (!_isJsonApiProofValid(data)) {
             revert("Invalid proof");
@@ -227,7 +226,15 @@ contract ProveMeWrong {
 
         if (
             _markets[marketId].requestHash !=
-            _hashRequest(data.data.requestBody, requestHashSalt)
+            _hashRequest(
+                data.data.requestBody.url, 
+                data.data.requestBody.httpMethod,
+                data.data.requestBody.headers, 
+                data.data.requestBody.queryParams, 
+                data.data.requestBody.body,
+                data.data.requestBody.postProcessJq, 
+                data.data.requestBody.abiSignature
+            )
         ) {
             revert("Invalid request hash");
         }
@@ -254,10 +261,23 @@ contract ProveMeWrong {
     }
 
     function _hashRequest(
-        IWeb2Json.RequestBody calldata request,
-        bytes32 salt
+        string memory url,
+        string memory httpMethod,
+        string memory headers,
+        string memory queryParams,
+        string memory body,
+        string memory postProcessJq,
+        string memory abiSignature
     ) private pure returns (bytes32) {
-        return keccak256(abi.encode(request, salt));
+        return keccak256(abi.encode(
+            url, 
+            httpMethod,
+            headers, 
+            queryParams, 
+            body, 
+            postProcessJq, 
+            abiSignature
+        ));
     }
 
     function _isJsonApiProofValid(

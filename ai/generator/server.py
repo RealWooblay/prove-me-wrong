@@ -29,6 +29,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Localhost Configuration
+LOCALHOST_URL = os.getenv("LOCALHOST_URL", None)
+
 # ASI-1 Mini API Configuration
 ASI_API_URL = "https://api.asi1.ai/v1/chat/completions"
 ASI_API_KEY = os.getenv("ASI_API_KEY", "sk_a1d55fd6b1ba47ddadc98bd1e8048e56ff00c4736c844a9db4aab791d33f0989")
@@ -78,7 +81,96 @@ def get_asi_headers():
         'Accept': 'application/json',
         'Authorization': f'bearer {ASI_API_KEY}'
     }
+def deploy_market(
+    market_id: str,
+    title: str,
+    url: str,
+    yes_probability: float,
+    no_probability: float,
+) -> bool:
+    """Deploy market to the blockchain using admin wallet"""
+    
+    w3 = get_web3_instance()
+    if not w3:
+        logger.warning("Web3 not available, skipping blockchain deployment")
+        return False
+    
+    if ADMIN_PRIVATE_KEY is None:
+        logger.warning("ADMIN_PRIVATE_KEY not configured, skipping blockchain deployment")
+        return False
+    
+    if PMW_ADDRESS is None:
+        logger.warning("PMW_ADDRESS not configured, skipping blockchain deployment")
+        return False
 
+    if PMW_POOL_ADDRESS is None:
+        logger.warning("PMW_POOL_ADDRESS not configured, skipping blockchain deployment")
+        return False
+    
+    try:
+        # Create account from private key
+        account = Account.from_key(ADMIN_PRIVATE_KEY)
+        
+        # Create contract instance
+        contract = w3.eth.contract(address=Web3.to_checksum_address(PMW_ADDRESS), abi=get_contract_abi())
+        
+        # Prepare market data for blockchain
+        request_hash = Web3.keccak(text=
+            url + 
+            "GET" + 
+            "{}" + 
+            "{}" + 
+            "{}" + 
+            "{outcome: .outcome}" + 
+            '{"components": [ {"internalType": "uint256", "name": "outcome", "type": "uint256"} ],"name": "task", "type": "tuple"}'
+        )
+        
+        # Convert probabilities to price format (1e18 = 100%)
+        yes_price = int(yes_probability * 1e18)
+        no_price = int(no_probability * 1e18)
+        
+        # Ensure prices sum to 1e18 (100%)
+        total_price = yes_price + no_price
+        if total_price != 1e18:
+            # Normalize prices
+            yes_price = (yes_price * 1e18) // total_price
+            no_price = 1e18 - yes_price
+        
+        # Build transaction
+        transaction = contract.functions.createMarket(
+            Web3.keccak(text=market_id),
+            request_hash,
+            title,
+            f"PMW-{title.upper()}",  # Symbol
+            yes_price,
+            no_price,
+            Web3.to_checksum_address(PMW_POOL_ADDRESS)
+        ).build_transaction({
+            'from': account.address,
+            'gas': 2000000,  # Adjust gas limit as needed
+            'gasPrice': w3.eth.gas_price,
+            'nonce': w3.eth.get_transaction_count(account.address),
+            'chainId': CHAIN_ID
+        })
+        
+        # Sign and send transaction
+        signed_txn = w3.eth.account.sign_transaction(transaction, ADMIN_PRIVATE_KEY)
+        tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+        logger.info(f"Market deployed to blockchain: {market_id}, tx: {tx_hash.hex()}")
+        # Wait for transaction receipt
+        receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+        
+        if receipt["status"] == 1:
+            logger.info(f"Market deployed to blockchain: {market_id}, tx: {tx_hash.hex()}")
+            return True
+        else:
+            logger.error(f"Transaction failed: {tx_hash.hex()}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Error deploying market to blockchain: {e}")
+        return False
+      
 def load_markets_from_db(db: Session) -> Dict[str, MarketData]:
     """Load markets from database"""
     markets = {}
@@ -144,6 +236,7 @@ def save_market_to_db(db: Session, market: MarketData):
         db.rollback()
         logger.error(f"Error saving market to database: {e}")
         raise
+
 
 def archive_expired_markets(db: Session):
     """Move expired markets to archived status in database"""
@@ -444,6 +537,29 @@ async def generate_market(request: MarketRequest, db: Session = Depends(get_db))
         save_market_to_db(db, market_data)
         
         logger.info(f"Market created and stored: {market_data.id}")
+
+        url = f"{LOCALHOST_URL}/resolutions/{market_data.id}/outcome"
+
+        # Deploy the market to the blockchain
+        blockchain_deployed = False
+        try:            
+            blockchain_deployed = deploy_market(
+                market_id=market_data.id,
+                title=market_data.title,
+                url=url,
+                yes_probability=market_data.validation.yes_probability,
+                no_probability=market_data.validation.no_probability,
+            )
+            if blockchain_deployed:
+                logger.info(f"Market successfully deployed to blockchain: {market_data.id}")
+            else:
+                logger.warning(f"Failed to deploy market to blockchain: {market_data.id}")
+        except Exception as e:
+            logger.error(f"Error deploying to blockchain: {e}")
+            # Continue with local storage even if blockchain deployment fails
+        
+        # Add blockchain deployment status to market data
+        market_data.blockchain_deployed = blockchain_deployed
         
         return MarketResponse(
             success=True,
