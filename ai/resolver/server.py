@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel, Field
 import requests
 import json
@@ -13,6 +13,11 @@ from bs4 import BeautifulSoup
 import schedule
 import time
 import threading
+from sqlalchemy.orm import Session
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from database import get_db, init_db, Resolution, SessionLocal
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -28,11 +33,7 @@ MODEL_NAME = "asi1-mini"
 # Generator API configuration
 GENERATOR_API_URL = os.getenv("GENERATOR_API_URL", "http://localhost:8000")
 
-# Local storage for resolved markets
-RESOLUTIONS_FILE = "resolutions.json"
-RESOLUTIONS_DIR = "resolutions"
-ACTIVE_RESOLUTIONS_FILE = "active/resolutions.json"
-ARCHIVED_RESOLUTIONS_FILE = "archived/resolutions.json"
+# Database storage for resolutions (replaces file storage)
 
 class MarketData(BaseModel):
     id: str
@@ -72,110 +73,85 @@ def get_asi_headers():
         'Authorization': f'bearer {ASI_API_KEY}'
     }
 
-def ensure_resolutions_directory():
-    """Ensure the resolutions directory structure exists"""
-    if not os.path.exists(RESOLUTIONS_DIR):
-        os.makedirs(RESOLUTIONS_DIR)
-    if not os.path.exists(os.path.join(RESOLUTIONS_DIR, "active")):
-        os.makedirs(os.path.join(RESOLUTIONS_DIR, "active"))
-    if not os.path.exists(os.path.join(RESOLUTIONS_DIR, "archived")):
-        os.makedirs(os.path.join(RESOLUTIONS_DIR, "archived"))
-
-def load_resolutions() -> Dict[str, ResolutionResult]:
-    """Load resolutions from local storage"""
-    ensure_resolutions_directory()
-    
-    # Load active resolutions
-    active_file = os.path.join(RESOLUTIONS_DIR, ACTIVE_RESOLUTIONS_FILE)
-    archived_file = os.path.join(RESOLUTIONS_DIR, ARCHIVED_RESOLUTIONS_FILE)
-    
+def load_resolutions_from_db(db: Session) -> Dict[str, ResolutionResult]:
+    """Load resolutions from database"""
     resolutions = {}
-    
-    # Load active resolutions
-    if os.path.exists(active_file):
-        try:
-            with open(active_file, 'r') as f:
-                data = json.load(f)
-                for market_id, resolution_data in data.items():
-                    resolutions[market_id] = ResolutionResult(**resolution_data)
-        except Exception as e:
-            logger.error(f"Error loading active resolutions: {e}")
-    
-    # Load archived resolutions (for backward compatibility and reference)
-    if os.path.exists(archived_file):
-        try:
-            with open(archived_file, 'r') as f:
-                data = json.load(f)
-                for market_id, resolution_data in data.items():
-                    resolutions[market_id] = ResolutionResult(**resolution_data)
-        except Exception as e:
-            logger.error(f"Error loading archived resolutions: {e}")
-    
-    # Backward compatibility: load from old single file if it exists
-    old_file = os.path.join(RESOLUTIONS_DIR, RESOLUTIONS_FILE)
-    if os.path.exists(old_file) and not resolutions:
-        try:
-            with open(old_file, 'r') as f:
-                data = json.load(f)
-                for market_id, resolution_data in data.items():
-                    resolutions[market_id] = ResolutionResult(**resolution_data)
-        except Exception as e:
-            logger.error(f"Error loading old resolutions file: {e}")
+    try:
+        db_resolutions = db.query(Resolution).all()
+        for db_resolution in db_resolutions:
+            resolution_data = {
+                "market_id": db_resolution.market_id,
+                "outcome": db_resolution.outcome,
+                "confidence": db_resolution.confidence,
+                "reasoning": db_resolution.reasoning,
+                "evidence_sources": db_resolution.evidence_sources,
+                "resolved_at": db_resolution.resolved_at,
+                "auto_expired": db_resolution.auto_expired
+            }
+            resolutions[db_resolution.market_id] = ResolutionResult(**resolution_data)
+    except Exception as e:
+        logger.error(f"Error loading resolutions from database: {e}")
     
     return resolutions
 
-def save_resolutions(resolutions: Dict[str, ResolutionResult]):
-    """Save resolutions to local storage, organizing by status"""
-    ensure_resolutions_directory()
-    
-    active_resolutions = {}
-    archived_resolutions = {}
-    
-    # Separate resolutions by status (auto_expired goes to archived)
-    for market_id, resolution in resolutions.items():
-        if resolution.auto_expired:
-            archived_resolutions[market_id] = resolution.dict()
+def save_resolution_to_db(db: Session, resolution: ResolutionResult):
+    """Save resolution to database"""
+    try:
+        db_resolution = Resolution(
+            id=resolution.market_id,  # Use market_id as the primary key
+            market_id=resolution.market_id,
+            outcome=resolution.outcome,
+            confidence=resolution.confidence,
+            reasoning=resolution.reasoning,
+            evidence_sources=resolution.evidence_sources,
+            resolved_at=resolution.resolved_at,
+            auto_expired=resolution.auto_expired
+        )
+        
+        # Check if resolution exists
+        existing_resolution = db.query(Resolution).filter(Resolution.market_id == resolution.market_id).first()
+        if existing_resolution:
+            # Update existing resolution
+            existing_resolution.outcome = resolution.outcome
+            existing_resolution.confidence = resolution.confidence
+            existing_resolution.reasoning = resolution.reasoning
+            existing_resolution.evidence_sources = resolution.evidence_sources
+            existing_resolution.resolved_at = resolution.resolved_at
+            existing_resolution.auto_expired = resolution.auto_expired
         else:
-            active_resolutions[market_id] = resolution.dict()
-    
-    # Save active resolutions
-    active_file = os.path.join(RESOLUTIONS_DIR, ACTIVE_RESOLUTIONS_FILE)
-    try:
-        with open(active_file, 'w') as f:
-            json.dump(active_resolutions, f, indent=2)
+            # Add new resolution
+            db.add(db_resolution)
+        
+        db.commit()
+        logger.info(f"Saved resolution to database: {resolution.market_id}")
     except Exception as e:
-        logger.error(f"Error saving active resolutions: {e}")
-    
-    # Save archived resolutions
-    archived_file = os.path.join(RESOLUTIONS_DIR, ARCHIVED_RESOLUTIONS_FILE)
-    try:
-        with open(archived_file, 'w') as f:
-            json.dump(archived_resolutions, f, indent=2)
-    except Exception as e:
-        logger.error(f"Error saving archived resolutions: {e}")
+        db.rollback()
+        logger.error(f"Error saving resolution to database: {e}")
+        raise
 
-
-
-def archive_old_resolutions(days_old: int = 30):
-    """Move old resolutions to archived status"""
-    resolutions = load_resolutions()
+def archive_old_resolutions_db(db: Session, days_old: int = 30):
+    """Move old resolutions to archived status in database"""
     current_time = datetime.now()
     cutoff_time = current_time - timedelta(days=days_old)
     updated = False
     
-    for market_id, resolution in resolutions.items():
-        if not resolution.auto_expired:
+    try:
+        active_resolutions = db.query(Resolution).filter(Resolution.auto_expired == False).all()
+        for db_resolution in active_resolutions:
             try:
-                resolved_time = datetime.fromisoformat(resolution.resolved_at.replace('Z', '+00:00'))
+                resolved_time = datetime.fromisoformat(db_resolution.resolved_at.replace('Z', '+00:00'))
                 if resolved_time <= cutoff_time:
-                    resolution.auto_expired = True
+                    db_resolution.auto_expired = True
                     updated = True
-                    logger.info(f"Archived old resolution for market: {market_id}")
+                    logger.info(f"Archived old resolution for market: {db_resolution.market_id}")
             except Exception as e:
                 logger.error(f"Error checking resolution age: {e}")
-    
-    if updated:
-        save_resolutions(resolutions)
+        
+        if updated:
+            db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error archiving old resolutions: {e}")
     
     return updated
 
@@ -429,7 +405,7 @@ def check_auto_expiration(market: MarketData) -> bool:
         return False
 
 @app.post("/resolve", response_model=ResolutionResponse)
-async def resolve_market(request: ResolutionRequest):
+async def resolve_market(request: ResolutionRequest, db: Session = Depends(get_db)):
     """Resolve a specific market"""
     
     if not ASI_API_KEY:
@@ -450,7 +426,7 @@ async def resolve_market(request: ResolutionRequest):
         market = markets[request.market_id]
         
         # Check if already resolved
-        resolutions = load_resolutions()
+        resolutions = load_resolutions_from_db(db)
         if request.market_id in resolutions and not request.force_resolve:
             return ResolutionResponse(
                 success=True,
@@ -476,9 +452,8 @@ async def resolve_market(request: ResolutionRequest):
             # Analyze outcome
             resolution = await analyze_outcome(market, evidence_sources)
         
-        # Store resolution
-        resolutions[request.market_id] = resolution
-        save_resolutions(resolutions)
+        # Store resolution in database
+        save_resolution_to_db(db, resolution)
         
         logger.info(f"Market resolved: {resolution.outcome} (confidence: {resolution.confidence})")
         
@@ -495,7 +470,7 @@ async def resolve_market(request: ResolutionRequest):
         )
 
 @app.post("/resolve-all")
-async def resolve_all_markets():
+async def resolve_all_markets(db: Session = Depends(get_db)):
     """Resolve all active markets (for cron job)"""
     
     if not ASI_API_KEY:
@@ -506,7 +481,7 @@ async def resolve_all_markets():
         
         # Get markets from generator
         markets = get_markets_from_generator()
-        resolutions = load_resolutions()
+        resolutions = load_resolutions_from_db(db)
         
         results = []
         
@@ -526,7 +501,7 @@ async def resolve_all_markets():
                     resolved_at=datetime.now().isoformat(),
                     auto_expired=True
                 )
-                resolutions[market_id] = resolution
+                save_resolution_to_db(db, resolution)
                 results.append({"market_id": market_id, "outcome": "EXPIRED", "auto_expired": True})
                 continue
             
@@ -541,7 +516,7 @@ async def resolve_all_markets():
                     resolution = await analyze_outcome(market, evidence_sources)
                     
                     if resolution.outcome in ["YES", "NO"]:
-                        resolutions[market_id] = resolution
+                        save_resolution_to_db(db, resolution)
                         results.append({
                             "market_id": market_id, 
                             "outcome": resolution.outcome, 
@@ -560,9 +535,6 @@ async def resolve_all_markets():
                         "error": str(e)
                     })
         
-        # Save all resolutions
-        save_resolutions(resolutions)
-        
         logger.info(f"Batch resolution complete. Processed {len(results)} markets")
         
         return {
@@ -579,10 +551,10 @@ async def resolve_all_markets():
         }
 
 @app.post("/archive-old")
-async def archive_old_resolutions_endpoint(days_old: int = 30):
+async def archive_old_resolutions_endpoint(days_old: int = 30, db: Session = Depends(get_db)):
     """Manually trigger archiving of old resolutions"""
     try:
-        updated = archive_old_resolutions(days_old)
+        updated = archive_old_resolutions_db(db, days_old)
         return {
             "success": True,
             "message": f"Archived {updated} old resolutions" if updated else "No old resolutions to archive",
@@ -594,63 +566,94 @@ async def archive_old_resolutions_endpoint(days_old: int = 30):
         raise HTTPException(status_code=500, detail=f"Error archiving resolutions: {str(e)}")
 
 @app.get("/resolutions")
-def list_resolutions():
+def list_resolutions(db: Session = Depends(get_db)):
     """List all resolved markets"""
-    resolutions = load_resolutions()
+    resolutions = load_resolutions_from_db(db)
     return {
         "total": len(resolutions),
         "resolutions": [resolution.dict() for resolution in resolutions.values()]
     }
 
 @app.get("/resolutions/active")
-async def get_active_resolutions():
+async def get_active_resolutions(db: Session = Depends(get_db)):
     """Get only active resolutions (not auto-expired)"""
     try:
-        resolutions = load_resolutions()
-        active_resolutions = {market_id: resolution for market_id, resolution in resolutions.items() if not resolution.auto_expired}
+        db_resolutions = db.query(Resolution).filter(Resolution.auto_expired == False).all()
+        resolutions = []
+        for db_resolution in db_resolutions:
+            resolution_data = ResolutionResult(
+                market_id=db_resolution.market_id,
+                outcome=db_resolution.outcome,
+                confidence=db_resolution.confidence,
+                reasoning=db_resolution.reasoning,
+                evidence_sources=db_resolution.evidence_sources,
+                resolved_at=db_resolution.resolved_at,
+                auto_expired=db_resolution.auto_expired
+            )
+            resolutions.append(resolution_data)
+        
         return {
-            "total": len(active_resolutions),
-            "resolutions": list(active_resolutions.values())
+            "total": len(resolutions),
+            "resolutions": resolutions
         }
     except Exception as e:
         logger.error(f"Error getting active resolutions: {e}")
         raise HTTPException(status_code=500, detail=f"Error loading resolutions: {str(e)}")
 
 @app.get("/resolutions/archived")
-async def get_archived_resolutions():
+async def get_archived_resolutions(db: Session = Depends(get_db)):
     """Get only archived resolutions (auto-expired)"""
     try:
-        resolutions = load_resolutions()
-        archived_resolutions = {market_id: resolution for market_id, resolution in resolutions.items() if resolution.auto_expired}
+        db_resolutions = db.query(Resolution).filter(Resolution.auto_expired == True).all()
+        resolutions = []
+        for db_resolution in db_resolutions:
+            resolution_data = ResolutionResult(
+                market_id=db_resolution.market_id,
+                outcome=db_resolution.outcome,
+                confidence=db_resolution.confidence,
+                reasoning=db_resolution.reasoning,
+                evidence_sources=db_resolution.evidence_sources,
+                resolved_at=db_resolution.resolved_at,
+                auto_expired=db_resolution.auto_expired
+            )
+            resolutions.append(resolution_data)
+        
         return {
-            "total": len(archived_resolutions),
-            "resolutions": list(archived_resolutions.values())
+            "total": len(resolutions),
+            "resolutions": resolutions
         }
     except Exception as e:
         logger.error(f"Error getting archived resolutions: {e}")
         raise HTTPException(status_code=500, detail=f"Error loading resolutions: {str(e)}")
 
 @app.get("/resolutions/{market_id}")
-def get_resolution(market_id: str):
+def get_resolution(market_id: str, db: Session = Depends(get_db)):
     """Get a specific resolution by market ID"""
-    resolutions = load_resolutions()
-    if market_id in resolutions:
-        return resolutions[market_id]
+    db_resolution = db.query(Resolution).filter(Resolution.market_id == market_id).first()
+    if db_resolution:
+        resolution_data = ResolutionResult(
+            market_id=db_resolution.market_id,
+            outcome=db_resolution.outcome,
+            confidence=db_resolution.confidence,
+            reasoning=db_resolution.reasoning,
+            evidence_sources=db_resolution.evidence_sources,
+            resolved_at=db_resolution.resolved_at,
+            auto_expired=db_resolution.auto_expired
+        )
+        return resolution_data
     raise HTTPException(status_code=404, detail="Resolution not found")
 
 @app.get("/resolutions/{market_id}/outcome")
-def get_market_outcome(market_id: str):
+def get_market_outcome(market_id: str, db: Session = Depends(get_db)):
     """Get the outcome of a market (true, false, or undefined)"""
-    resolutions = load_resolutions()
-    if market_id not in resolutions:
+    db_resolution = db.query(Resolution).filter(Resolution.market_id == market_id).first()
+    if not db_resolution:
         raise HTTPException(status_code=404, detail="Resolution not found")
     
-    resolution = resolutions[market_id]
-    
     # Check if market is resolved
-    if resolution.outcome == "YES":
+    if db_resolution.outcome == "YES":
         return {"outcome": 1}
-    elif resolution.outcome == "NO":
+    elif db_resolution.outcome == "NO":
         return {"outcome": 0}
     else:
         return {"outcome": 2}  # INSUFFICIENT_EVIDENCE, EXPIRED, etc.
@@ -658,16 +661,40 @@ def get_market_outcome(market_id: str):
 @app.get("/health")
 def health():
     """Health check endpoint"""
-    resolutions = load_resolutions()
-    markets = get_markets_from_generator()
-    return {
-        "status": "healthy",
-        "asi_api_configured": bool(ASI_API_KEY),
-        "model": MODEL_NAME,
-        "stored_resolutions": len(resolutions),
-        "total_markets": len(markets),
-        "generator_api_url": GENERATOR_API_URL
-    }
+    try:
+        # Try to get a database session
+        db = SessionLocal()
+        try:
+            resolution_count = db.query(Resolution).count()
+            markets = get_markets_from_generator()
+            return {
+                "status": "healthy",
+                "asi_api_configured": bool(ASI_API_KEY),
+                "model": MODEL_NAME,
+                "stored_resolutions": resolution_count,
+                "total_markets": len(markets),
+                "generator_api_url": GENERATOR_API_URL
+            }
+        except Exception as e:
+            logger.error(f"Health check DB error: {e}")
+            return {
+                "status": "unhealthy",
+                "error": str(e),
+                "asi_api_configured": bool(ASI_API_KEY),
+                "model": MODEL_NAME,
+                "generator_api_url": GENERATOR_API_URL
+            }
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Health check error: {e}")
+        return {
+            "status": "unhealthy",
+            "error": str(e),
+            "asi_api_configured": bool(ASI_API_KEY),
+            "model": MODEL_NAME,
+            "generator_api_url": GENERATOR_API_URL
+        }
 
 @app.get("/")
 def root():
@@ -691,7 +718,12 @@ def run_periodic_resolution():
     while True:
         try:
             logger.info("Running periodic market resolution")
-            asyncio.run(resolve_all_markets())
+            # Create a new database session for the background task
+            db = SessionLocal()
+            try:
+                asyncio.run(resolve_all_markets(db))
+            finally:
+                db.close()
         except Exception as e:
             logger.error(f"Error in periodic resolution: {e}")
         
@@ -708,10 +740,22 @@ async def start_background_tasks():
 
 @app.on_event("startup")
 async def startup_event():
-    """Clean up old resolutions on startup"""
+    """Initialize database and clean up old resolutions on startup"""
     try:
-        updated = archive_old_resolutions(30)  # Archive resolutions older than 30 days
-        if updated:
-            logger.info(f"Archived {updated} old resolutions on startup")
+        init_db()
+        logger.info("Database initialized successfully")
+        
+        logger.info("Market Resolver Agent starting up...")
+        logger.info(f"Generator API URL: {GENERATOR_API_URL}")
+        logger.info(f"ASI API configured: {bool(ASI_API_KEY)}")
+        
+        # Archive old resolutions
+        db = SessionLocal()
+        try:
+            updated = archive_old_resolutions_db(db, 30)  # Archive resolutions older than 30 days
+            if updated:
+                logger.info(f"Archived {updated} old resolutions on startup")
+        finally:
+            db.close()
     except Exception as e:
-        logger.error(f"Error during startup cleanup: {e}")
+        logger.error(f"Error during startup: {e}")
