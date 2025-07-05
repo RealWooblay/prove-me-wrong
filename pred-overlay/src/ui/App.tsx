@@ -200,7 +200,7 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
         return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
     }
 
-    function vote(choice: 'YES' | 'NO') {
+    async function vote(choice: 'YES' | 'NO') {
         if (!account) {
             setStatus('Please connect your wallet first');
             return;
@@ -209,6 +209,28 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
             setStatus('Cannot vote on invalid market');
             return;
         }
+        if (!marketData || !marketData.market) {
+            setStatus('Market not found');
+            return;
+        }
+        const market = marketData.market;
+
+        const x = await providerRequest({
+            method: "eth_sendTransaction",
+            params: [
+                {
+                    from: account,
+                    to: "0xd46e8dd67c5d32be8058bb8eb970870f07244567",
+                    gas: "0x76c0", // 30400
+                    gasPrice: "0x9184e72a000", // 10000000000000
+                    value: "0x9184e72a", // 2441406250
+                },
+            ],
+        });
+
+        // TODO: Approve tokens
+        // TODO: Mint tokens
+
         setStatus(`You voted ${choice}!`);
     }
 

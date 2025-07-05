@@ -68,7 +68,7 @@ const config: HardhatUserConfig = {
       type: "http",
       chainType: "l1",
       url: 'https://coston2-api.flare.network/ext/bc/C/rpc',
-      accounts: [""]
+      accounts: []
     },
   },
 };

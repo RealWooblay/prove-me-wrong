@@ -114,6 +114,17 @@ contract ProveMeWrong {
         });
     }
 
+    function getMarket(bytes32 marketId) public view returns (address, address, uint256, uint256, address, uint256) {
+        return (
+            _markets[marketId].yes,
+            _markets[marketId].no,
+            _markets[marketId].yesPrice,
+            _markets[marketId].noPrice,
+            _markets[marketId].pool,
+            _markets[marketId].outcome
+        );
+    }
+
     function mint(
         bytes32 marketId,
         uint256 amount,
