@@ -146,7 +146,8 @@ contract ProveMeWrong {
         uint256 feeAmount = (amount * FEE_PERCENTAGE) / PRICE_SCALE;
         uint256 betAmount = amount - feeAmount;
 
-        IERC20(PMWPool(_markets[marketId].pool).asset()).transfer(
+        IERC20(PMWPool(_markets[marketId].pool).asset()).transferFrom(
+            msg.sender,
             _markets[marketId].pool,
             amount
         );
