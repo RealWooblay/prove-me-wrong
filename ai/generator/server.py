@@ -634,8 +634,7 @@ async def generate_market(request: MarketRequest, db: Session = Depends(get_db))
             logger.error(f"Error deploying to blockchain: {e}")
             # Continue with local storage even if blockchain deployment fails
         
-        # Add blockchain deployment status to market data
-        market_data.blockchain_deployed = blockchain_deployed
+        # Note: blockchain deployment status is tracked separately
         
         return MarketResponse(
             success=True,
