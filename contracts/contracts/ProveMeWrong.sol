@@ -26,6 +26,7 @@ contract ProveMeWrong {
 
     uint256 private constant PRICE_SCALE = 1e18;
     uint256 private constant CURVE_FACTOR = 1e15; // 0.1% curve steepness
+    uint256 private constant FEE_PERCENTAGE = 1e15; // 0.1% fee (1e15 = 0.1% of 1e18)
 
     address public immutable pmw20Implementation;
     address public immutable pmwPoolImplementation;
@@ -122,18 +123,21 @@ contract ProveMeWrong {
             revert("Amount must be greater than 0");
         }
 
-        IERC20(PMWPool(_markets[marketId].pool).asset()).transferFrom(
-            msg.sender,
+        // Calculate fee (0.1% of the bet amount)
+        uint256 feeAmount = (amount * FEE_PERCENTAGE) / PRICE_SCALE;
+        uint256 betAmount = amount - feeAmount;
+
+        IERC20(PMWPool(_markets[marketId].pool).asset()).transfer(
             _markets[marketId].pool,
             amount
         );
 
-        // Calculate tokens to mint based on current prices
+        // Calculate tokens to mint based on current prices (using amount after fee)
         uint256 tokensToMint;
         if (outcome == true) {
-            tokensToMint = (amount * PRICE_SCALE) / _markets[marketId].yesPrice;
+            tokensToMint = (betAmount * PRICE_SCALE) / _markets[marketId].yesPrice;
         } else {
-            tokensToMint = (amount * PRICE_SCALE) / _markets[marketId].noPrice;
+            tokensToMint = (betAmount * PRICE_SCALE) / _markets[marketId].noPrice;
         }
 
         // Mint tokens representing potential winnings
