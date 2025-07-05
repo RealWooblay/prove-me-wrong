@@ -1,15 +1,8 @@
 import type { HardhatUserConfig } from "hardhat/config";
 
 import hardhatToolboxViemPlugin from "@nomicfoundation/hardhat-toolbox-viem";
-import { configVariable } from "hardhat/config";
-import hardhatVerify from "@nomicfoundation/hardhat-verify";
 
 const config: HardhatUserConfig = {
-  verify: {
-    etherscan: {
-      apiKey: "coston2", // apiKey is not required, just set a placeholder
-    },
-  },
   /*
    * In Hardhat 3, plugins are defined as part of the Hardhat config instead of
    * being based on the side-effect of imports.
@@ -19,7 +12,6 @@ const config: HardhatUserConfig = {
    */
   plugins: [
     hardhatToolboxViemPlugin,
-    hardhatVerify
   ],
   solidity: {
     /*
@@ -76,7 +68,7 @@ const config: HardhatUserConfig = {
       type: "http",
       chainType: "l1",
       url: 'https://coston2-api.flare.network/ext/bc/C/rpc',
-      accounts: ["b81faea7d21760bdd498e56b570c8cf7351c1aa851efe4b69da6c8bd0cf0a53f"]
+      accounts: [""]
     },
   },
 };
