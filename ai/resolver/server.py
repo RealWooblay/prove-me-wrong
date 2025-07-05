@@ -13,6 +13,9 @@ from bs4 import BeautifulSoup
 import schedule
 import time
 import threading
+from web3 import Web3
+from eth_account import Account
+import hashlib
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -27,6 +30,15 @@ MODEL_NAME = "asi1-mini"
 
 # Generator API configuration
 GENERATOR_API_URL = os.getenv("GENERATOR_API_URL", "http://localhost:8000")
+LOCALHOST_URL = "http://localhost:8001"
+
+# Blockchain Configuration
+RPC_URL = os.getenv("RPC_URL", None)
+PMW_ADDRESS = os.getenv("PMW_ADDRESS", None)
+FDC_HUB_ADDRESS = os.getenv("FDC_HUB_ADDRESS", None)
+FDC_FEE_CONFIG_ADDRESS = os.getenv("FDC_FEE_CONFIG_ADDRESS", None)
+ADMIN_PRIVATE_KEY = os.getenv("ADMIN_PRIVATE_KEY", None)
+CHAIN_ID = int(os.getenv("CHAIN_ID", 0))
 
 # Local storage for resolved markets
 RESOLUTIONS_FILE = "resolutions.json"
@@ -71,6 +83,282 @@ def get_asi_headers():
         'Accept': 'application/json',
         'Authorization': f'bearer {ASI_API_KEY}'
     }
+
+def get_web3_instance():
+    """Get Web3 instance for blockchain interactions"""
+    if not RPC_URL or RPC_URL == "https://sepolia.infura.io/v3/your-project-id":
+        logger.warning("RPC_URL not configured, blockchain operations will be skipped")
+        return None
+    
+    try:
+        w3 = Web3(Web3.HTTPProvider(RPC_URL))
+        if not w3.is_connected():
+            logger.error("Failed to connect to blockchain")
+            return None
+        return w3
+    except Exception as e:
+        logger.error(f"Error connecting to blockchain: {e}")
+        return None
+
+def get_resolve_market_abi():
+    """Get the ProveMeWrong contract ABI for resolveMarket function"""
+    return [
+        {
+        "inputs": [
+            {
+            "internalType": "bytes32",
+            "name": "marketId",
+            "type": "bytes32"
+            },
+            {
+            "components": [
+                {
+                "internalType": "bytes32[]",
+                "name": "merkleProof",
+                "type": "bytes32[]"
+                },
+                {
+                "components": [
+                    {
+                    "internalType": "bytes32",
+                    "name": "attestationType",
+                    "type": "bytes32"
+                    },
+                    {
+                    "internalType": "bytes32",
+                    "name": "sourceId",
+                    "type": "bytes32"
+                    },
+                    {
+                    "internalType": "uint64",
+                    "name": "votingRound",
+                    "type": "uint64"
+                    },
+                    {
+                    "internalType": "uint64",
+                    "name": "lowestUsedTimestamp",
+                    "type": "uint64"
+                    },
+                    {
+                    "components": [
+                        {
+                        "internalType": "string",
+                        "name": "url",
+                        "type": "string"
+                        },
+                        {
+                        "internalType": "string",
+                        "name": "httpMethod",
+                        "type": "string"
+                        },
+                        {
+                        "internalType": "string",
+                        "name": "headers",
+                        "type": "string"
+                        },
+                        {
+                        "internalType": "string",
+                        "name": "queryParams",
+                        "type": "string"
+                        },
+                        {
+                        "internalType": "string",
+                        "name": "body",
+                        "type": "string"
+                        },
+                        {
+                        "internalType": "string",
+                        "name": "postProcessJq",
+                        "type": "string"
+                        },
+                        {
+                        "internalType": "string",
+                        "name": "abiSignature",
+                        "type": "string"
+                        }
+                    ],
+                    "internalType": "struct IWeb2Json.RequestBody",
+                    "name": "requestBody",
+                    "type": "tuple"
+                    },
+                    {
+                    "components": [
+                        {
+                        "internalType": "bytes",
+                        "name": "abiEncodedData",
+                        "type": "bytes"
+                        }
+                    ],
+                    "internalType": "struct IWeb2Json.ResponseBody",
+                    "name": "responseBody",
+                    "type": "tuple"
+                    }
+                ],
+                "internalType": "struct IWeb2Json.Response",
+                "name": "data",
+                "type": "tuple"
+                }
+            ],
+            "internalType": "struct IWeb2Json.Proof",
+            "name": "data",
+            "type": "tuple"
+            }
+        ],
+        "name": "resolveMarket",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+        }
+    ]
+
+def get_request_fee_abi():
+    return [
+        {
+        "inputs": [
+        {
+            "internalType": "bytes",
+            "name": "_data",
+            "type": "bytes"
+        }
+        ],
+        "name": "getRequestFee",
+        "outputs": [
+        {
+            "internalType": "uint256",
+            "name": "_fee",
+            "type": "uint256"
+        }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+]
+
+def get_request_attestation_abi():
+    return [
+       {
+        "inputs": [
+        {
+            "internalType": "bytes",
+            "name": "_data",
+            "type": "bytes"
+        }
+        ],
+        "name": "requestAttestation",
+        "outputs": [],
+        "stateMutability": "payable",
+        "type": "function"
+    }   
+    ]
+
+def prepare_fdc_request(
+    url: str
+) -> Optional[str]:
+    """Prepare a request for the Flare FDC"""
+    
+    try:
+        response = requests.post(
+            "https://jq-verifier-test.flare.rocks/JsonApi/prepareRequest",
+            headers={
+                "X-API-KEY": "flare-oxford-2025",
+                "Content-Type": "application/json"
+            },
+            json={
+                "attestationType": "0x494a736f6e417069000000000000000000000000000000000000000000000000",
+                "sourceId": "0x5745423200000000000000000000000000000000000000000000000000000000",
+                "requestBody": {
+                    "url": url,
+                    "postprocessJq": "{outcome: .outcome}",
+                    "abi_signature": '{"components": [ {"internalType": "uint256", "name": "outcome", "type": "uint256"} ],"name": "task", "type": "tuple"}'
+                }
+            }
+        )
+        
+        if not response.ok:
+            logger.error(f"FDC request failed with status: {response.status_code}")
+            return None
+        
+        data = response.json()
+        if data.get("status") != "VALID":
+            logger.error(f"FDC request returned invalid status: {data.get('status')}")
+            return None
+        
+        return data.get("abiEncodedRequest")
+        
+    except Exception as e:
+        logger.error(f"Error preparing FDC request: {e}")
+        return None
+
+def resolve_market_onchain(market_id: str, url: str) -> bool:
+    """Resolve a market on the blockchain using admin wallet"""
+    
+    w3 = get_web3_instance()
+    if not w3:
+        logger.warning("Web3 not available, skipping blockchain resolution")
+        return False
+    
+    if ADMIN_PRIVATE_KEY is None:
+        logger.warning("ADMIN_PRIVATE_KEY not configured, skipping blockchain resolution")
+        return False
+    
+    if PMW_ADDRESS is None:
+        logger.warning("PMW_ADDRESS not configured, skipping blockchain resolution")
+        return False
+
+    if FDC_FEE_CONFIG_ADDRESS is None:
+        logger.warning("FDC_FEE_CONFIG_ADDRESS not configured, skipping blockchain resolution")
+        return False
+
+    if FDC_HUB_ADDRESS is None:
+        logger.warning("FDC_HUB_ADDRESS not configured, skipping blockchain resolution")
+        return False
+    
+    try:
+        # Create account from private key
+        account = Account.from_key(ADMIN_PRIVATE_KEY)
+
+        # Get encoded request from FDC
+        encoded_request = prepare_fdc_request(
+            url
+        )
+        if not encoded_request:
+            logger.error("Failed to prepare FDC request")
+            return False
+
+        request_fee = w3.eth.contract(
+            address=Web3.to_checksum_address(FDC_FEE_CONFIG_ADDRESS), 
+            abi=get_request_fee_abi()
+        ).functions.getRequestFee(encoded_request).call()
+        logger.info(f"Request fee: {request_fee}")
+
+        attestation_tx = w3.eth.contract(
+            address=Web3.to_checksum_address(FDC_HUB_ADDRESS),
+            abi=get_request_attestation_abi()
+        ).functions.requestAttestation(encoded_request).build_transaction({
+            'from': account.address,
+            'gas': 500000,  # Adjust gas limit as needed
+            'gasPrice': w3.eth.gas_price,
+            'nonce': w3.eth.get_transaction_count(account.address),
+            'chainId': CHAIN_ID,
+            'value': request_fee
+        })
+
+        signed_attestation_txn = w3.eth.account.sign_transaction(attestation_tx, ADMIN_PRIVATE_KEY)
+        attestation_tx_hash = w3.eth.send_raw_transaction(signed_attestation_txn.rawTransaction)
+        attestation_receipt = w3.eth.wait_for_transaction_receipt(attestation_tx_hash)
+        
+        block_number = attestation_receipt.get('blockNumber')
+        logger.info(f"Attestation transaction receipt: {attestation_receipt}")
+        logger.info(f"Attestation block number: {block_number}, tx: {attestation_tx_hash.hex()}")
+        
+        if attestation_receipt["status"] != 1:
+            logger.error(f"Attestation transaction failed: {attestation_tx_hash.hex()}")
+            return False     
+
+        
+    except Exception as e:
+        logger.error(f"Error resolving market on blockchain: {e}")
+        return False
 
 def ensure_resolutions_directory():
     """Ensure the resolutions directory structure exists"""
@@ -196,7 +484,7 @@ def get_markets_from_generator() -> Dict[str, MarketData]:
         logger.error(f"Error getting markets from generator: {e}")
         return {}
 
-async def search_for_evidence(market: MarketData) -> List[str]:
+async def search_for_evidence(market: MarketData) -> List[Dict[str, Any]]:
     """Search for evidence about the market outcome"""
     
     # Get current date for context
@@ -293,7 +581,7 @@ async def scrape_content(url: str) -> str:
         logger.error(f"Error scraping {url}: {e}")
         return ""
 
-async def analyze_outcome(market: MarketData, evidence_sources: List[str]) -> ResolutionResult:
+async def analyze_outcome(market: MarketData, evidence_sources: List[Dict[str, Any]]) -> ResolutionResult:
     """Use ASI-1 Mini to analyze the outcome based on evidence"""
     
     # Get current date for context
@@ -539,8 +827,13 @@ async def resolve_all_markets():
                 try:
                     evidence_sources = await search_for_evidence(market)
                     resolution = await analyze_outcome(market, evidence_sources)
+
+                    url = f"{LOCALHOST_URL}/resolutions/{market_id}/outcome"
                     
                     if resolution.outcome in ["YES", "NO"]:
+                        # Resolve the market onchain
+                        resolve_market_onchain(market_id, url)
+
                         resolutions[market_id] = resolution
                         results.append({
                             "market_id": market_id, 
@@ -660,13 +953,17 @@ def health():
     """Health check endpoint"""
     resolutions = load_resolutions()
     markets = get_markets_from_generator()
+    w3 = get_web3_instance()
     return {
         "status": "healthy",
         "asi_api_configured": bool(ASI_API_KEY),
         "model": MODEL_NAME,
         "stored_resolutions": len(resolutions),
         "total_markets": len(markets),
-        "generator_api_url": GENERATOR_API_URL
+        "generator_api_url": GENERATOR_API_URL,
+        "blockchain_configured": bool(RPC_URL and PMW_ADDRESS and ADMIN_PRIVATE_KEY),
+        "blockchain_connected": bool(w3),
+        "pmw_contract_address": PMW_ADDRESS
     }
 
 @app.get("/")
@@ -676,6 +973,7 @@ def root():
         "service": "Market Resolver Agent",
         "version": "1.0.0",
         "model": MODEL_NAME,
+        "blockchain_integration": "enabled",
         "endpoints": {
             "POST /resolve": "Resolve a specific market",
             "POST /resolve-all": "Resolve all active markets",

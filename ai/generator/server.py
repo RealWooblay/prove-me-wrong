@@ -28,7 +28,7 @@ app.add_middleware(
 )
 
 # Localhost Configuration
-LOCALHOST_URL = "http://localhost:8001"
+LOCALHOST_URL = os.getenv("LOCALHOST_URL", None)
 
 # ASI-1 Mini API Configuration
 ASI_API_URL = "https://api.asi1.ai/v1/chat/completions"
@@ -159,7 +159,7 @@ def get_contract_abi():
     ]
 
 def deploy_market(
-    id: str,
+    market_id: str,
     title: str,
     url: str,
     yes_probability: float,
@@ -192,7 +192,6 @@ def deploy_market(
         contract = w3.eth.contract(address=Web3.to_checksum_address(PMW_ADDRESS), abi=get_contract_abi())
         
         # Prepare market data for blockchain
-        market_id = Web3.keccak(text=id)
         request_hash = Web3.keccak(text=
             url + 
             "GET" + 
@@ -216,7 +215,7 @@ def deploy_market(
         
         # Build transaction
         transaction = contract.functions.createMarket(
-            market_id,
+            Web3.keccak(text=market_id),
             request_hash,
             title,
             f"PMW-{title.upper()}",  # Symbol
@@ -234,12 +233,12 @@ def deploy_market(
         # Sign and send transaction
         signed_txn = w3.eth.account.sign_transaction(transaction, ADMIN_PRIVATE_KEY)
         tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
-        
+        logger.info(f"Market deployed to blockchain: {market_id}, tx: {tx_hash.hex()}")
         # Wait for transaction receipt
         receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
         
         if receipt["status"] == 1:
-            logger.info(f"Market deployed to blockchain: {id}, tx: {tx_hash.hex()}")
+            logger.info(f"Market deployed to blockchain: {market_id}, tx: {tx_hash.hex()}")
             return True
         else:
             logger.error(f"Transaction failed: {tx_hash.hex()}")
@@ -625,7 +624,7 @@ async def generate_market(request: MarketRequest):
         blockchain_deployed = False
         try:            
             blockchain_deployed = deploy_market(
-                id=market_data.id,
+                market_id=market_data.id,
                 title=market_data.title,
                 url=url,
                 yes_probability=market_data.validation.yes_probability,
