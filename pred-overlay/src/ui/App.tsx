@@ -493,7 +493,7 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
         try {
             setStatus('Approving spending...');
 
-            const pmwAddress = "0x16aBb05Ea76113afF9F2C6fdE8b16cedCff1D0e6";
+            const pmwAddress = "0xc805660D32C1A554733365D7fC81FbcA7BA00CF1";
             const tokenAddress = "0xC1A5B41512496B80903D1f32d6dEa3a73212E71F";
 
             // Convert bet amount to wei
