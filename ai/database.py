@@ -9,9 +9,15 @@ logger = logging.getLogger(__name__)
 # Database configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./markets.db")
 
+# Handle empty DATABASE_URL (common in Railway)
+if not DATABASE_URL or DATABASE_URL.strip() == "":
+    DATABASE_URL = "sqlite:///./markets.db"
+
 # Handle Railway's DATABASE_URL format
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+logger.info(f"Using database URL: {DATABASE_URL}")
 
 # Create engine
 engine = create_engine(DATABASE_URL, echo=False)

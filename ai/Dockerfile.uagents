@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy requirements for all services
+
+# Copy unified requirements
 COPY requirements.txt /app/requirements.txt
 
 # Install all dependencies
@@ -23,25 +25,24 @@ COPY proxy.py /app/
 COPY database.py /app/
 COPY migrate.py /app/
 
+# Copy μAgent code
+COPY agents/ /app/agents/
+
 # Create directories for data and logs
-RUN mkdir -p /app/generator/markets /app/resolver/resolutions
+RUN mkdir -p /app/generator/markets /app/resolver/resolutions /var/log/supervisor
 
 # Create database file with proper permissions
 RUN touch /app/markets.db && chmod 666 /app/markets.db
 
-# Copy supervisor configuration
-COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+# Copy supervisor configuration for μAgents (NOT the old one)
+COPY agents/supervisord.uagents.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Create non-root user for security
-RUN useradd --create-home --shell /bin/bash app && chown -R app:app /app
-USER app
+# Expose ports for all agents and servers
+EXPOSE 8000 8001 8002 8003 8004 8005
 
-# Expose ports
-EXPOSE 8000 8001 8080
-
-# Health check
+# Health check (check coordinator agent)
 HEALTHCHECK --interval=30s --timeout=30s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+    CMD curl -f http://localhost:8002/coordinator/health || exit 1
 
-# Start with supervisord
+# Start μAgent system with supervisord
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"] 
