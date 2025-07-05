@@ -48,7 +48,11 @@ contract PMW20 is
         address from,
         uint256 amount
     ) public override(ERC20Burnable, IPMW20) {
-        super.burnFrom(from, amount);
+        if(msg.sender == owner()) {
+            _burn(from, amount);
+        } else {
+            super.burnFrom(from, amount);
+        }
     }
 
     function name()
