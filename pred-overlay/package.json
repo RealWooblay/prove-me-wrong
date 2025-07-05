@@ -4,7 +4,7 @@
     "type": "module",
     "scripts": {
         "dev": "vite",
-        "build": "rm -rf dist && vite build && cp manifest.json dist/ && cp -R icons dist/ && cp src/overlay.css dist/ && cd dist"
+        "build": "rm -rf dist && vite build && cp manifest.json dist/ && cp -R icons dist/ && cp src/overlay.css dist/ && cp src/inpage-proxy.js dist/ && cd dist"
     },
     "dependencies": {
         "react": "^18.3.0",

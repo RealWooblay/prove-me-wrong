@@ -1,12 +1,64 @@
 import React, { useState } from 'react';
 
+// Proxy request function to communicate with the main page context
+function providerRequest(payload: { method: string; params?: any[] }) {
+    return new Promise((resolve, reject) => {
+        const id = crypto.randomUUID();
+        window.postMessage({ type: 'CS_REQUEST', id, payload }, '*');
+
+        function handler(e: MessageEvent) {
+            if (e.data?.type !== 'CS_RESPONSE' || e.data.id !== id) return;
+            window.removeEventListener('message', handler);
+            e.data.error ? reject(new Error(e.data.error)) : resolve(e.data.result);
+        }
+        window.addEventListener('message', handler);
+    });
+}
+
+const connectBtnStyle: React.CSSProperties = {
+    padding: '0.5em 1.6em',
+    borderRadius: '2em',
+    background: '#10b981',
+    color: '#fff',
+    fontWeight: 600,
+    fontSize: '.95em',
+    border: 'none',
+    cursor: 'pointer',
+    boxShadow: '0 1px 4px #0002',
+};
+
 export function App({ marketId, title }: { marketId: string; title: string }) {
     const [status, setStatus] = useState('');
+    const [account, setAccount] = useState<string | null>(null);
+
+    async function connectWallet() {
+        try {
+            setStatus('Connecting to wallet...');
+            const accounts = await providerRequest({ method: 'eth_requestAccounts' }) as string[];
+            if (accounts && accounts.length) {
+                setAccount(accounts[0]);
+                setStatus('Wallet connected!');
+            } else {
+                setStatus('No accounts found');
+            }
+        } catch (err: any) {
+            setStatus(err.message || 'Wallet connection failed.');
+        }
+    }
+
+    function shortAddr(addr: string) {
+        return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+    }
+
     const yesProb = 62;
     const noProb = 38;
 
     function vote(choice: 'YES' | 'NO') {
-        setStatus(`You clicked ${choice}!`);
+        if (!account) {
+            setStatus('Please connect your wallet first');
+            return;
+        }
+        setStatus(`You voted ${choice}!`);
     }
 
     return (
@@ -38,8 +90,10 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
                             border: 'none',
                             cursor: 'pointer',
                             boxShadow: '0 1px 4px #0002',
+                            opacity: account ? 1 : 0.4,
                         }}
                         onClick={() => vote('YES')}
+                        disabled={!account}
                     >
                         YES
                     </button>
@@ -57,15 +111,28 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
                             border: 'none',
                             cursor: 'pointer',
                             boxShadow: '0 1px 4px #0002',
+                            opacity: account ? 1 : 0.4,
                         }}
                         onClick={() => vote('NO')}
+                        disabled={!account}
                     >
                         NO
                     </button>
                 </div>
             </div>
-            <div style={{ fontSize: '0.95em', minHeight: '1.2em', opacity: 0.85, textAlign: 'center', marginTop: '.5em' }}>
-                {status || 'Choose YES or NO to vote.'}
+            <div style={{ marginTop: '.6em', textAlign: 'center' }}>
+                {account ? (
+                    <span style={{ fontSize: '.95em', opacity: 0.9 }}>
+                        🔗 {shortAddr(account)}
+                    </span>
+                ) : (
+                    <button style={connectBtnStyle} onClick={connectWallet}>
+                        Connect Wallet
+                    </button>
+                )}
+                <div style={{ fontSize: '.9em', marginTop: '.3em', opacity: 0.8 }}>
+                    {status || (account ? 'Choose YES or NO to vote.' : 'Connect your wallet to vote.')}
+                </div>
             </div>
         </span>
     );

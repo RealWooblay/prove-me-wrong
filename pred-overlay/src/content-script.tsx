@@ -3,6 +3,11 @@ import { createRoot } from 'react-dom/client';
 
 console.log('[PredictionOverlay] content script loaded…');
 
+// Inject the in-page proxy script to handle wallet requests
+const script = document.createElement('script');
+script.src = chrome.runtime.getURL('inpage-proxy.js');
+(document.head || document.documentElement).appendChild(script);
+
 // Configurable domain constant
 const MARKET_DOMAIN = 'your.app'; // <-- change to your real domain!
 const MARKET_LINK_REGEX = new RegExp(
