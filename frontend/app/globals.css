@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background: #0f172a;
+    color: #e2e8f0;
+  }
+}
+
+@layer utilities {
+  .creative-card {
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.8) 0%, rgba(30, 41, 59, 0.4) 100%);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    box-shadow: 0 8px 32px rgba(59, 130, 246, 0.1);
+  }
+
+  .creative-card-accent {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(15, 23, 42, 0.8) 100%);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    box-shadow: 0 8px 32px rgba(59, 130, 246, 0.15);
+  }
+
+  .slide-up {
+    animation: slideUp 0.8s ease-out;
+  }
+
+  .float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  .rotate-card {
+    transform: rotate(-2deg);
+  }
+
+  .rotate-card-reverse {
+    transform: rotate(2deg);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0px) rotate(-2deg);
+  }
+  50% {
+    transform: translateY(-10px) rotate(-2deg);
+  }
+}

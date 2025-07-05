@@ -734,11 +734,16 @@ def get_market_outcome(market_id: str):
     
     # Check if market is resolved
     if market.status == "resolved" and market.outcome:
-        return {"outcome": market.outcome, "status": market.status, "confidence": market.resolution_confidence}
+        if market.outcome == "YES":
+            return {"outcome": True}
+        elif market.outcome == "NO":
+            return {"outcome": False}
+        else:
+            return {"outcome": False}  # Treat any other outcome as false
     elif market.status == "expired":
-        return {"outcome": "expired", "status": market.status}
+        return {"outcome": False}  # Expired markets are false
     else:
-        return {"outcome": "undefined", "status": market.status, "message": "Market not yet resolved"}
+        return {"outcome": "undefined"}  # Market not yet resolved
 
 @app.put("/markets/{market_id}/outcome")
 def update_market_outcome(market_id: str, outcome_data: dict):

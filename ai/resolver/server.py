@@ -632,12 +632,28 @@ async def get_archived_resolutions():
 
 @app.get("/resolutions/{market_id}")
 def get_resolution(market_id: str):
-    """Get resolution for a specific market"""
+    """Get a specific resolution by market ID"""
     resolutions = load_resolutions()
     if market_id in resolutions:
-        return resolutions[market_id].dict()
-    else:
+        return resolutions[market_id]
+    raise HTTPException(status_code=404, detail="Resolution not found")
+
+@app.get("/resolutions/{market_id}/outcome")
+def get_market_outcome(market_id: str):
+    """Get the outcome of a market (true, false, or undefined)"""
+    resolutions = load_resolutions()
+    if market_id not in resolutions:
         raise HTTPException(status_code=404, detail="Resolution not found")
+    
+    resolution = resolutions[market_id]
+    
+    # Check if market is resolved
+    if resolution.outcome == "YES":
+        return {"outcome": 1}
+    elif resolution.outcome == "NO":
+        return {"outcome": 0}
+    else:
+        return {"outcome": 2}  # INSUFFICIENT_EVIDENCE, EXPIRED, etc.
 
 @app.get("/health")
 def health():
