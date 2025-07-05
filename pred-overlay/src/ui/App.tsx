@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import marketService, { MarketResponse } from '../services/marketService';
 import config from '../config/config';
-import { encodeFunctionData, parseEther, getAddress, keccak256, toBytes, toHex } from 'viem';
+import { encodeFunctionData, parseEther, getAddress, keccak256, toBytes, toHex, parseUnits } from 'viem';
 import { createPublicClient, http } from 'viem'
 import { flareTestnet } from 'viem/chains'
 
@@ -442,28 +442,6 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
         }
     }
 
-    async function disconnectWallet() {
-        try {
-            setStatus('Disconnecting wallet...');
-            // Try to revoke permissions - this is the standard way to disconnect
-            await providerRequest({
-                method: 'wallet_revokePermissions',
-                params: [{ eth_accounts: {} }]
-            });
-            setAccount(null);
-            setStatus('Wallet disconnected');
-        } catch (err: any) {
-            // If revoke fails, just clear the local state
-            // This is common as not all wallets support revoke
-            setAccount(null);
-            setStatus('Wallet disconnected');
-        }
-    }
-
-    function shortAddr(addr: string) {
-        return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
-    }
-
     async function vote(choice: 'YES' | 'NO') {
         if (!account) {
             setStatus('Please connect your wallet first');
@@ -497,7 +475,7 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
             const tokenAddress = "0xC1A5B41512496B80903D1f32d6dEa3a73212E71F";
 
             // Convert bet amount to wei
-            const betAmountWei = parseEther(betAmount);
+            const betAmountWei = parseUnits(betAmount, 6);
             
             const approveData = encodeFunctionData({
                 abi: [{
