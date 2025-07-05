@@ -285,7 +285,7 @@
                 showLoading(true);
                 hideError();
 
-                const response = await fetch('/generator/markets');
+                const response = await fetch('https://prove-me-wrong-production.up.railway.app/generator/markets');
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
@@ -295,7 +295,7 @@
                 // Fetch outcomes for each market
                 await Promise.all(allMarkets.map(async (market) => {
                     try {
-                        const outcomeResp = await fetch(`/resolver/resolutions/${market.id}/outcome`);
+                        const outcomeResp = await fetch(`https://prove-me-wrong-production.up.railway.app/resolver/resolutions/${market.id}/outcome`);
                         if (outcomeResp.ok) {
                             const outcomeData = await outcomeResp.json();
                             market.outcome = outcomeData.outcome;
@@ -425,7 +425,7 @@
 
         async function archiveExpired() {
             try {
-                const response = await fetch('/generator/archive-expired', { method: 'POST' });
+                const response = await fetch('https://prove-me-wrong-production.up.railway.app/generator/archive-expired', { method: 'POST' });
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
@@ -445,9 +445,9 @@
             }
 
             try {
-                const markets = await fetch('/generator/markets').then(r => r.json());
+                const markets = await fetch('https://prove-me-wrong-production.up.railway.app/generator/markets').then(r => r.json());
                 const deletePromises = markets.markets.map(market =>
-                    fetch(`/generator/markets/${market.id}`, { method: 'DELETE' })
+                    fetch(`https://prove-me-wrong-production.up.railway.app/generator/markets/${market.id}`, { method: 'DELETE' })
                 );
 
                 await Promise.all(deletePromises);

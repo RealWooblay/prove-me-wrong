@@ -17,9 +17,19 @@ from database import get_db, init_db, Market, SessionLocal
 from web3 import Web3
 from eth_account import Account
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging for Railway
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 logger = logging.getLogger(__name__)
+
+# Force immediate flush for Railway logs
+import sys
+sys.stdout.reconfigure(line_buffering=True)
 
 app = FastAPI(title="Market Generator Agent", version="1.0.0")
 
@@ -31,8 +41,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Localhost Configuration
-LOCALHOST_URL = os.getenv("LOCALHOST_URL", None)
+# Railway URL Configuration
+RAILWAY_URL = os.getenv("RAILWAY_URL", "https://prove-me-wrong-production.up.railway.app")
 
 # Blockchain Configuration
 RPC_URL = os.getenv("RPC_URL", None)
@@ -166,30 +176,49 @@ def deploy_market(
 ) -> bool:
     """Deploy market to the blockchain using admin wallet"""
     
+    logger.info(f"🚀 Starting blockchain deployment for market: {market_id}")
+    logger.info(f"   Title: {title}")
+    logger.info(f"   URL: {url}")
+    logger.info(f"   YES probability: {yes_probability}")
+    logger.info(f"   NO probability: {no_probability}")
+    
+    # Check environment variables
+    logger.info(f"🔧 Environment check:")
+    logger.info(f"   RPC_URL: {'✅ Set' if RPC_URL else '❌ Not set'}")
+    logger.info(f"   ADMIN_PRIVATE_KEY: {'✅ Set' if ADMIN_PRIVATE_KEY else '❌ Not set'}")
+    logger.info(f"   PMW_ADDRESS: {'✅ Set' if PMW_ADDRESS else '❌ Not set'}")
+    logger.info(f"   PMW_POOL_ADDRESS: {'✅ Set' if PMW_POOL_ADDRESS else '❌ Not set'}")
+    logger.info(f"   CHAIN_ID: {CHAIN_ID}")
+    
     w3 = get_web3_instance()
     if not w3:
-        logger.warning("Web3 not available, skipping blockchain deployment")
+        logger.error("❌ Web3 not available, skipping blockchain deployment")
         return False
     
     if ADMIN_PRIVATE_KEY is None:
-        logger.warning("ADMIN_PRIVATE_KEY not configured, skipping blockchain deployment")
+        logger.error("❌ ADMIN_PRIVATE_KEY not configured, skipping blockchain deployment")
         return False
     
     if PMW_ADDRESS is None:
-        logger.warning("PMW_ADDRESS not configured, skipping blockchain deployment")
+        logger.error("❌ PMW_ADDRESS not configured, skipping blockchain deployment")
         return False
 
     if PMW_POOL_ADDRESS is None:
-        logger.warning("PMW_POOL_ADDRESS not configured, skipping blockchain deployment")
+        logger.error("❌ PMW_POOL_ADDRESS not configured, skipping blockchain deployment")
         return False
     
     try:
+        logger.info("🔑 Creating account from private key...")
         # Create account from private key
         account = Account.from_key(ADMIN_PRIVATE_KEY)
+        logger.info(f"   Account address: {account.address}")
         
+        logger.info("📋 Creating contract instance...")
         # Create contract instance
         contract = w3.eth.contract(address=Web3.to_checksum_address(PMW_ADDRESS), abi=get_contract_abi())
+        logger.info(f"   Contract address: {PMW_ADDRESS}")
         
+        logger.info("🔗 Preparing market data for blockchain...")
         # Prepare market data for blockchain
         request_hash = Web3.keccak(text=
             url + 
@@ -200,7 +229,9 @@ def deploy_market(
             "{outcome: .outcome}" + 
             '{"components": [ {"internalType": "uint256", "name": "outcome", "type": "uint256"} ],"name": "task", "type": "tuple"}'
         )
+        logger.info(f"   Request hash: {request_hash.hex()}")
         
+        logger.info("💰 Converting probabilities to price format...")
         # Convert probabilities to price format (1e18 = 100%)
         yes_price = int(yes_probability * 1e18)
         no_price = int(no_probability * 1e18)
@@ -212,14 +243,19 @@ def deploy_market(
             yes_price = (yes_price * 1e18) // total_price
             no_price = 1e18 - yes_price
         
+        logger.info(f"   YES price: {yes_price} (wei)")
+        logger.info(f"   NO price: {no_price} (wei)")
+        logger.info(f"   Total price: {total_price} (wei)")
+        
+        logger.info("📝 Building transaction...")
         # Build transaction
         transaction = contract.functions.createMarket(
             Web3.keccak(text=market_id),
             request_hash,
             title,
             f"PMW-{title.upper()}",  # Symbol
-            yes_price,
-            no_price,
+            int(yes_price),  # Explicitly convert to int
+            int(no_price),   # Explicitly convert to int
             Web3.to_checksum_address(PMW_POOL_ADDRESS)
         ).build_transaction({
             'from': account.address,
@@ -229,22 +265,39 @@ def deploy_market(
             'chainId': CHAIN_ID
         })
         
+        logger.info(f"   Gas price: {w3.eth.gas_price}")
+        logger.info(f"   Nonce: {w3.eth.get_transaction_count(account.address)}")
+        logger.info(f"   Chain ID: {CHAIN_ID}")
+        logger.info(f"   YES price type: {type(yes_price)}, value: {yes_price}")
+        logger.info(f"   NO price type: {type(no_price)}, value: {no_price}")
+        
+        logger.info("✍️ Signing transaction...")
         # Sign and send transaction
         signed_txn = w3.eth.account.sign_transaction(transaction, ADMIN_PRIVATE_KEY)
+        logger.info("📤 Sending transaction...")
         tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
-        logger.info(f"Market deployed to blockchain: {market_id}, tx: {tx_hash.hex()}")
+        logger.info(f"   Transaction hash: {tx_hash.hex()}")
+        
+        logger.info("⏳ Waiting for transaction receipt...")
         # Wait for transaction receipt
         receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+        logger.info(f"   Block number: {receipt['blockNumber']}")
+        logger.info(f"   Gas used: {receipt['gasUsed']}")
+        logger.info(f"   Status: {receipt['status']}")
         
         if receipt["status"] == 1:
-            logger.info(f"Market deployed to blockchain: {market_id}, tx: {tx_hash.hex()}")
+            logger.info(f"✅ Market successfully deployed to blockchain: {market_id}")
+            logger.info(f"   Transaction: {tx_hash.hex()}")
             return True
         else:
-            logger.error(f"Transaction failed: {tx_hash.hex()}")
+            logger.error(f"❌ Transaction failed: {tx_hash.hex()}")
             return False
             
     except Exception as e:
-        logger.error(f"Error deploying market to blockchain: {e}")
+        logger.error(f"❌ Error deploying market to blockchain: {e}")
+        logger.error(f"   Exception type: {type(e).__name__}")
+        import traceback
+        logger.error(f"   Traceback: {traceback.format_exc()}")
         return False
       
 def load_markets_from_db(db: Session) -> Dict[str, MarketData]:
@@ -612,11 +665,14 @@ async def generate_market(request: MarketRequest, db: Session = Depends(get_db))
         # Store market in database
         save_market_to_db(db, market_data)
         
-        logger.info(f"Market created and stored: {market_data.id}")
+        logger.info(f"✅ Market created and stored: {market_data.id}")
 
-        url = f"{LOCALHOST_URL}/resolutions/{market_data.id}/outcome"
+        url = f"{RAILWAY_URL}/resolver/resolutions/{market_data.id}/outcome"
+        logger.info(f"🔗 Resolution URL: {url}")
 
         # Deploy the market to the blockchain
+        logger.info("🌐 Starting blockchain deployment...")
+        print("🚀 BLOCKCHAIN DEPLOYMENT STARTED")  # Railway will definitely show this
         blockchain_deployed = False
         try:            
             blockchain_deployed = deploy_market(
@@ -627,15 +683,52 @@ async def generate_market(request: MarketRequest, db: Session = Depends(get_db))
                 no_probability=market_data.validation.no_probability,
             )
             if blockchain_deployed:
-                logger.info(f"Market successfully deployed to blockchain: {market_data.id}")
+                logger.info(f"✅ Market successfully deployed to blockchain: {market_data.id}")
+                print(f"✅ BLOCKCHAIN SUCCESS: {market_data.id}")  # Railway will show this
             else:
-                logger.warning(f"Failed to deploy market to blockchain: {market_data.id}")
+                logger.error(f"❌ Failed to deploy market to blockchain: {market_data.id}")
+                print(f"❌ BLOCKCHAIN FAILED: {market_data.id}")  # Railway will show this
+                # Delete the market from database since blockchain deployment failed
+                try:
+                    db_market = db.query(Market).filter(Market.id == market_data.id).first()
+                    if db_market:
+                        db.delete(db_market)
+                        db.commit()
+                        logger.info(f"🗑️ Deleted market from database due to blockchain deployment failure: {market_data.id}")
+                        print(f"🗑️ MARKET DELETED: {market_data.id}")  # Railway will show this
+                except Exception as delete_error:
+                    logger.error(f"Error deleting market from database: {delete_error}")
+                    db.rollback()
+                
+                return MarketResponse(
+                    success=False,
+                    error="Failed to deploy market to blockchain. Market creation aborted."
+                )
         except Exception as e:
-            logger.error(f"Error deploying to blockchain: {e}")
-            # Continue with local storage even if blockchain deployment fails
+            logger.error(f"❌ Error deploying to blockchain: {e}")
+            print(f"❌ BLOCKCHAIN ERROR: {e}")  # Railway will show this
+            import traceback
+            logger.error(f"   Traceback: {traceback.format_exc()}")
+            
+            # Delete the market from database since blockchain deployment failed
+            try:
+                db_market = db.query(Market).filter(Market.id == market_data.id).first()
+                if db_market:
+                    db.delete(db_market)
+                    db.commit()
+                    logger.info(f"🗑️ Deleted market from database due to blockchain deployment error: {market_data.id}")
+                    print(f"🗑️ MARKET DELETED (ERROR): {market_data.id}")  # Railway will show this
+            except Exception as delete_error:
+                logger.error(f"Error deleting market from database: {delete_error}")
+                db.rollback()
+            
+            return MarketResponse(
+                success=False,
+                error=f"Blockchain deployment failed: {str(e)}"
+            )
         
-        # Note: blockchain deployment status is tracked separately
-        
+        # Only return success if blockchain deployment succeeded
+        print(f"🎉 MARKET CREATION COMPLETE: {market_data.id}")  # Railway will show this
         return MarketResponse(
             success=True,
             market=market_data

@@ -22,9 +22,19 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import get_db, init_db, Resolution, SessionLocal
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging for Railway
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 logger = logging.getLogger(__name__)
+
+# Force immediate flush for Railway logs
+import sys
+sys.stdout.reconfigure(line_buffering=True)
 
 app = FastAPI(title="Market Resolver Agent", version="1.0.0")
 
@@ -34,8 +44,8 @@ ASI_API_KEY = os.getenv("ASI_API_KEY", "sk_a1d55fd6b1ba47ddadc98bd1e8048e56ff00c
 MODEL_NAME = "asi1-mini"
 
 # Generator API configuration
-GENERATOR_API_URL = os.getenv("GENERATOR_API_URL", "http://localhost:8000")
-LOCALHOST_URL = "http://localhost:8001"
+GENERATOR_API_URL = os.getenv("GENERATOR_API_URL", "https://prove-me-wrong-production.up.railway.app")
+RAILWAY_URL = os.getenv("RAILWAY_URL", "https://prove-me-wrong-production.up.railway.app")
 
 # Blockchain Configuration
 RPC_URL = os.getenv("RPC_URL", None)
@@ -820,7 +830,7 @@ async def resolve_all_markets(db: Session = Depends(get_db)):
                     evidence_sources = await search_for_evidence(market)
                     resolution = await analyze_outcome(market, evidence_sources)
 
-                    url = f"{LOCALHOST_URL}/resolutions/{market_id}/outcome"
+                    url = f"{RAILWAY_URL}/resolver/resolutions/{market_id}/outcome"
                     
                     if resolution.outcome in ["YES", "NO"]:
                         save_resolution_to_db(db, resolution)
