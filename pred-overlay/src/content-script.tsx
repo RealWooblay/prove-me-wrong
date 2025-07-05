@@ -12,76 +12,110 @@ const MARKET_LINK_REGEX = new RegExp(
 
 // Extract market slug from any Twitter link element
 function extractSlug(link: HTMLAnchorElement): string | null {
-    const sources = [
-        link.getAttribute('data-expanded-url'),
-        link.getAttribute('title'),
-        link.getAttribute('href'),
-        link.textContent          // NEW: visible text (for shortened t.co)
-    ];
-
-    for (const src of sources) {
-        if (!src) continue;
-        // Strip curly/straight quotes **and whitespace** (spaces, newlines)
-        const cleaned = src.replace(/[“”"'\s]/g, '');
-        const m = cleaned.match(MARKET_LINK_REGEX);
-        if (m) return m[1];
-    }
+    const expanded =
+        link.getAttribute('data-expanded-url') ||
+        link.getAttribute('title') ||
+        link.getAttribute('href') ||
+        '';
+    let m = expanded.match(MARKET_LINK_REGEX);
+    if (m) return m[1];
+    // Fallback: check visible text (flattened)
+    m = (link.innerText || '').match(MARKET_LINK_REGEX);
+    if (m) return m[1];
     return null;
 }
 
-// Fallback: scan the whole tweet text
-function extractFromArticle(article: HTMLElement): string | null {
-    const txt = article.innerText;
-    const m = txt.match(MARKET_LINK_REGEX);
-    return m ? m[1] : null;
+// Extracts the title text that follows the anchor (up to the first line break)
+function extractTitleFromAnchor(anchor: HTMLAnchorElement): string {
+    let title = '';
+    let node = anchor.nextSibling;
+    while (node) {
+        if (node.nodeType === Node.TEXT_NODE) {
+            const txt = (node as Text).textContent || '';
+            if (txt.includes('\n')) {
+                title += txt.split('\n')[0];
+                break;
+            }
+            title += txt;
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+            const el = node as HTMLElement;
+            // Only include inline elements
+            const inlineTags = ['SPAN', 'B', 'I', 'EM', 'STRONG', 'A', 'SMALL', 'U', 'MARK', 'CODE'];
+            if (inlineTags.includes(el.tagName)) {
+                const inner = el.innerText || '';
+                if (inner.includes('\n')) {
+                    title += inner.split('\n')[0];
+                    break;
+                }
+                title += inner;
+            } else {
+                break; // Stop at block elements
+            }
+        } else {
+            break;
+        }
+        node = node.nextSibling;
+    }
+    return title.trim();
 }
 
-function injectOverlay(tweetNode: HTMLElement, marketId: string) {
-    console.log('[PredictionOverlay] injectOverlay called for marketId:', marketId, tweetNode);
-    if (tweetNode.querySelector('.pred-overlay-root')) return;
-    const shadowHost = document.createElement('div');
-    shadowHost.className = 'pred-overlay-root';
-    shadowHost.style.position = 'relative';
-    shadowHost.style.width = '100%';
-    shadowHost.style.display = 'block';
-    shadowHost.style.margin = '0';
-    // Append the overlay card at the end of the tweet
-    tweetNode.appendChild(shadowHost);
-    const shadow = shadowHost.attachShadow({ mode: 'open' });
+function injectOverlay(anchor: HTMLAnchorElement, marketId: string) {
+    if (anchor.dataset.overlayInjected === 'yes') return;
+
+    // Extract the title from the text node after the anchor
+    const title = extractTitleFromAnchor(anchor) || 'Prediction Market';
+
+    // grab the title text node right after the link
+    const titleTextNode =
+        anchor.nextSibling && anchor.nextSibling.nodeType === Node.TEXT_NODE
+            ? (anchor.nextSibling as Text)
+            : null;
+
+    // build replacement host
+    const host = document.createElement('span');  // span keeps inline flow
+    host.className = 'pred-overlay-root';
+    host.style.display = 'inline-block';          // inline, not full‑width
+    host.style.verticalAlign = 'middle';
+    host.style.margin = '0 0.25rem';
+    host.style.maxWidth = '100%';                 // wrap inside tweet width
+
+    // swap the link for the host
+    anchor.replaceWith(host);
+    if (titleTextNode) titleTextNode.textContent = ''; // remove original title
+
+    // Shadow DOM
+    const shadow = host.attachShadow({ mode: 'open' });
     const mount = document.createElement('div');
     shadow.appendChild(mount);
+
+    // bring in CSS
     const style = document.createElement('link');
     style.rel = 'stylesheet';
     style.href = chrome.runtime.getURL('overlay.css');
     shadow.appendChild(style);
+
     import('./ui/App').then(({ App }) => {
         createRoot(mount).render(
             <React.StrictMode>
-                <App tweet={tweetNode.innerText} marketId={marketId} />
+                <App marketId={marketId} title={title} />
             </React.StrictMode>
         );
     });
+
+    host.dataset.overlayInjected = 'yes';
 }
 
 function scanTweets() {
     document.querySelectorAll<HTMLElement>('article').forEach(article => {
-        if (article.dataset.overlayApplied === 'true') return;
+        article.querySelectorAll<HTMLAnchorElement>('a').forEach(anchor => {
+            // Skip if we've already handled this link
+            if (anchor.dataset.overlayInjected === 'yes') return;
 
-        let slug: string | null = null;
+            const slug = extractSlug(anchor);
+            if (!slug) return;
 
-        // 1) look at every anchor
-        article.querySelectorAll<HTMLAnchorElement>('a').forEach(link => {
-            slug = slug || extractSlug(link);
+            injectOverlay(anchor, slug);
         });
-
-        // 2) fall back to the tweet text
-        if (!slug) slug = extractFromArticle(article);
-
-        if (slug) {
-            console.log('[PredictionOverlay] injecting for slug', slug);
-            injectOverlay(article, slug);
-            article.dataset.overlayApplied = 'true';
-        }
     });
 }
 
