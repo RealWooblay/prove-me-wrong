@@ -135,16 +135,6 @@ def get_contract_abi():
             "type": "bytes32"
             },
             {
-            "internalType": "string",
-            "name": "name",
-            "type": "string"
-            },
-            {
-            "internalType": "string",
-            "name": "symbol",
-            "type": "string"
-            },
-            {
             "internalType": "uint256",
             "name": "yesPrice",
             "type": "uint256"
@@ -252,8 +242,6 @@ def deploy_market(
         transaction = contract.functions.createMarket(
             Web3.keccak(text=market_id),
             request_hash,
-            title,
-            f"PMW-{title.upper()}",  # Symbol
             int(yes_price),  # Explicitly convert to int
             int(no_price),   # Explicitly convert to int
             Web3.to_checksum_address(PMW_POOL_ADDRESS)

@@ -3,8 +3,6 @@ pragma solidity ^0.8.28;
 
 import {ERC20, IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ERC20Burnable} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
-import {ERC20Permit, IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
-import {ERC1363} from "@openzeppelin/contracts/token/ERC20/extensions/ERC1363.sol";
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
@@ -14,8 +12,6 @@ import {IPMW20} from "./IPMW20.sol";
 contract PMW20 is
     ERC20,
     ERC20Burnable,
-    ERC20Permit,
-    ERC1363,
     Ownable,
     Initializable,
     IPMW20
@@ -23,7 +19,7 @@ contract PMW20 is
     string private _name;
     string private _symbol;
 
-    constructor() ERC20("", "") ERC20Permit("") Ownable(address(1)) {}
+    constructor() ERC20("", "") Ownable(address(1)) {}
 
     function initialize(
         string memory initName,
@@ -71,11 +67,5 @@ contract PMW20 is
         returns (string memory)
     {
         return _symbol;
-    }
-
-    function nonces(
-        address owner
-    ) public view override(ERC20Permit, IERC20Permit) returns (uint256) {
-        return super.nonces(owner);
     }
 }

@@ -43,7 +43,22 @@ contract ProveMeWrong {
         pmwPoolImplementation = address(new PMWPool());
     }
 
-    function createPool(address asset, address owner) external {
+    // DEBUG
+    /*
+    function createPoolAndMarket(
+        address asset,
+        address owner,
+        bytes32 marketId,
+        bytes32 requestHash,
+        uint256 yesPrice,
+        uint256 noPrice
+    ) external { 
+        address pool = createPool(asset, owner);
+        createMarket(marketId, requestHash, yesPrice, noPrice, pool);
+    }
+    */
+   
+    function createPool(address asset, address owner) public returns (address) {
         address pool = Clones.clone(pmwPoolImplementation);
         PMWPool(pool).initialize(
             asset,
@@ -51,17 +66,17 @@ contract ProveMeWrong {
             pmw20Implementation,
             owner
         );
+
+        return pool;
     }
 
     function createMarket(
         bytes32 marketId,
         bytes32 requestHash,
-        string memory name,
-        string memory symbol,
         uint256 yesPrice,
         uint256 noPrice,
         address pool
-    ) external {
+    ) public {
         if (_marketExists(marketId)) {
             revert("Market already exists");
         }
@@ -76,15 +91,15 @@ contract ProveMeWrong {
         
         address yes = Clones.clone(pmw20Implementation);
         IPMW20(yes).initialize(
-            string.concat(name, " (yes)"),
-            string.concat(symbol, "yes"),
+            "yes",
+            "YES",
             address(this)
         );
 
         address no = Clones.clone(pmw20Implementation);
         IPMW20(no).initialize(
-            string.concat(name, " (no)"),
-            string.concat(symbol, "no"),
+            "no",
+            "NO",
             address(this)
         );
 
