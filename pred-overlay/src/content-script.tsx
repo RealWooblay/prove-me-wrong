@@ -62,38 +62,65 @@ function extractTitleFromAnchor(anchor: HTMLAnchorElement): string {
 function injectOverlay(anchor: HTMLAnchorElement, marketId: string) {
     if (anchor.dataset.overlayInjected === 'yes') return;
 
-    // Extract the title from the text node after the anchor
+    // Extract the title from the text node and inline elements after the anchor
     const title = extractTitleFromAnchor(anchor) || 'Prediction Market';
 
-    // grab the title text node right after the link
-    const titleTextNode =
-        anchor.nextSibling && anchor.nextSibling.nodeType === Node.TEXT_NODE
-            ? (anchor.nextSibling as Text)
-            : null;
+    // Collect all nodes to remove: the anchor and all adjacent inline title nodes
+    const nodesToRemove: Node[] = [anchor];
+    let node = anchor.nextSibling;
+    const inlineTags = ['SPAN', 'B', 'I', 'EM', 'STRONG', 'A', 'SMALL', 'U', 'MARK', 'CODE'];
+    let foundLineBreak = false;
+    while (node && !foundLineBreak) {
+        let shouldRemove = false;
+        if (node.nodeType === Node.TEXT_NODE) {
+            const txt = (node as Text).textContent || '';
+            if (txt.match(/^\\s*$/)) {
+                // Remove whitespace-only nodes
+                shouldRemove = true;
+            } else if (txt.includes('\n')) {
+                shouldRemove = true;
+                foundLineBreak = true;
+            } else {
+                shouldRemove = true;
+            }
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+            const el = node as HTMLElement;
+            if (inlineTags.includes(el.tagName)) {
+                const inner = el.innerText || '';
+                shouldRemove = true;
+                if (inner.includes('\n')) foundLineBreak = true;
+            } else {
+                break;
+            }
+        } else {
+            break;
+        }
+        if (shouldRemove) {
+            nodesToRemove.push(node);
+        }
+        node = node.nextSibling;
+    }
 
-    // build replacement host
-    const host = document.createElement('span');  // span keeps inline flow
+    // Insert overlay host before the first node to remove
+    const host = document.createElement('span');
     host.className = 'pred-overlay-root';
-    host.style.display = 'inline-block';          // inline, not full‑width
+    host.style.display = 'inline-block';
     host.style.verticalAlign = 'middle';
     host.style.margin = '0 0.25rem';
-    host.style.maxWidth = '100%';                 // wrap inside tweet width
+    host.style.maxWidth = '100%';
+    nodesToRemove[0].parentNode?.insertBefore(host, nodesToRemove[0]);
 
-    // swap the link for the host
-    anchor.replaceWith(host);
-    if (titleTextNode) titleTextNode.textContent = ''; // remove original title
+    // Remove all nodes (link and title)
+    nodesToRemove.forEach(n => n.parentNode?.removeChild(n));
 
     // Shadow DOM
     const shadow = host.attachShadow({ mode: 'open' });
     const mount = document.createElement('div');
     shadow.appendChild(mount);
-
-    // bring in CSS
     const style = document.createElement('link');
     style.rel = 'stylesheet';
     style.href = chrome.runtime.getURL('overlay.css');
     shadow.appendChild(style);
-
     import('./ui/App').then(({ App }) => {
         createRoot(mount).render(
             <React.StrictMode>
@@ -101,7 +128,6 @@ function injectOverlay(anchor: HTMLAnchorElement, marketId: string) {
             </React.StrictMode>
         );
     });
-
     host.dataset.overlayInjected = 'yes';
 }
 
