@@ -877,7 +877,7 @@ def get_market(market_id: str, db: Session = Depends(get_db)):
 
 @app.get("/markets/{market_id}/outcome")
 def get_market_outcome(market_id: str, db: Session = Depends(get_db)):
-    """Get the outcome of a market (true, false, or undefined)"""
+    """Get the outcome of a market (1 for YES, 0 for NO, or undefined)"""
     db_market = db.query(Market).filter(Market.id == market_id).first()
     if not db_market:
         raise HTTPException(status_code=404, detail="Market not found")
@@ -885,13 +885,13 @@ def get_market_outcome(market_id: str, db: Session = Depends(get_db)):
     # Check if market is resolved
     if db_market.status == "resolved" and db_market.outcome:
         if db_market.outcome == "YES":
-            return {"outcome": True}
+            return {"outcome": 1}
         elif db_market.outcome == "NO":
-            return {"outcome": False}
+            return {"outcome": 0}
         else:
-            return {"outcome": False}  # Treat any other outcome as false
+            return {"outcome": 0}  # Treat any other outcome as false
     elif db_market.status == "expired":
-        return {"outcome": False}  # Expired markets are false
+        return {"outcome": 0}  # Expired markets are false
     else:
         return {"outcome": "undefined"}  # Market not yet resolved
 
