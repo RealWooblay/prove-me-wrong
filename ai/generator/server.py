@@ -9,6 +9,9 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 import logging
 import uuid
+from web3 import Web3
+from eth_account import Account
+import hashlib
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -24,10 +27,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Localhost Configuration
+LOCALHOST_URL = "http://localhost:8001"
+
 # ASI-1 Mini API Configuration
 ASI_API_URL = "https://api.asi1.ai/v1/chat/completions"
 ASI_API_KEY = os.getenv("ASI_API_KEY", "sk_a1d55fd6b1ba47ddadc98bd1e8048e56ff00c4736c844a9db4aab791d33f0989")
 MODEL_NAME = "asi1-mini"
+
+# Blockchain Configuration
+RPC_URL = os.getenv("RPC_URL", None)
+PMW_ADDRESS = os.getenv("PMW_ADDRESS", None)
+PMW_POOL_ADDRESS = os.getenv("PMW_POOL_ADDRESS", None)
+ADMIN_PRIVATE_KEY = os.getenv("ADMIN_PRIVATE_KEY", None)
+CHAIN_ID = int(os.getenv("CHAIN_ID", 0))
 
 # Local storage for markets
 MARKETS_FILE = "markets.json"
@@ -64,6 +77,7 @@ class MarketData(BaseModel):
     outcome: Optional[str] = None  # YES, NO, or None
     resolved_at: Optional[str] = None
     resolution_confidence: Optional[float] = None
+    blockchain_deployed: Optional[bool] = None  # Whether market was deployed to blockchain
 
 class MarketResponse(BaseModel):
     success: bool
@@ -77,6 +91,163 @@ def get_asi_headers():
         'Accept': 'application/json',
         'Authorization': f'bearer {ASI_API_KEY}'
     }
+
+def get_web3_instance():
+    """Get Web3 instance for blockchain interactions"""
+    if not RPC_URL or RPC_URL == "https://sepolia.infura.io/v3/your-project-id":
+        logger.warning("RPC_URL not configured, blockchain operations will be skipped")
+        return None
+    
+    try:
+        w3 = Web3(Web3.HTTPProvider(RPC_URL))
+        if not w3.is_connected():
+            logger.error("Failed to connect to blockchain")
+            return None
+        return w3
+    except Exception as e:
+        logger.error(f"Error connecting to blockchain: {e}")
+        return None
+
+def get_contract_abi():
+    """Get the ProveMeWrong contract ABI"""
+    # This would typically be loaded from a file or environment variable
+    # For now, we'll include the createMarket function ABI
+    return [
+            {
+        "inputs": [
+            {
+            "internalType": "bytes32",
+            "name": "marketId",
+            "type": "bytes32"
+            },
+            {
+            "internalType": "bytes32",
+            "name": "requestHash",
+            "type": "bytes32"
+            },
+            {
+            "internalType": "string",
+            "name": "name",
+            "type": "string"
+            },
+            {
+            "internalType": "string",
+            "name": "symbol",
+            "type": "string"
+            },
+            {
+            "internalType": "uint256",
+            "name": "yesPrice",
+            "type": "uint256"
+            },
+            {
+            "internalType": "uint256",
+            "name": "noPrice",
+            "type": "uint256"
+            },
+            {
+            "internalType": "address",
+            "name": "pool",
+            "type": "address"
+            }
+        ],
+        "name": "createMarket",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+        },                      
+    ]
+
+def deploy_market(
+    id: str,
+    title: str,
+    url: str,
+    yes_probability: float,
+    no_probability: float,
+) -> bool:
+    """Deploy market to the blockchain using admin wallet"""
+    
+    w3 = get_web3_instance()
+    if not w3:
+        logger.warning("Web3 not available, skipping blockchain deployment")
+        return False
+    
+    if ADMIN_PRIVATE_KEY is None:
+        logger.warning("ADMIN_PRIVATE_KEY not configured, skipping blockchain deployment")
+        return False
+    
+    if PMW_ADDRESS is None:
+        logger.warning("PMW_ADDRESS not configured, skipping blockchain deployment")
+        return False
+
+    if PMW_POOL_ADDRESS is None:
+        logger.warning("PMW_POOL_ADDRESS not configured, skipping blockchain deployment")
+        return False
+    
+    try:
+        # Create account from private key
+        account = Account.from_key(ADMIN_PRIVATE_KEY)
+        
+        # Create contract instance
+        contract = w3.eth.contract(address=Web3.to_checksum_address(PMW_ADDRESS), abi=get_contract_abi())
+        
+        # Prepare market data for blockchain
+        market_id = Web3.keccak(text=id)
+        request_hash = Web3.keccak(text=
+            url + 
+            "GET" + 
+            "{}" + 
+            "{}" + 
+            "{}" + 
+            "{outcome: .outcome}" + 
+            '{"components": [ {"internalType": "uint256", "name": "outcome", "type": "uint256"} ],"name": "task", "type": "tuple"}'
+        )
+        
+        # Convert probabilities to price format (1e18 = 100%)
+        yes_price = int(yes_probability * 1e18)
+        no_price = int(no_probability * 1e18)
+        
+        # Ensure prices sum to 1e18 (100%)
+        total_price = yes_price + no_price
+        if total_price != 1e18:
+            # Normalize prices
+            yes_price = (yes_price * 1e18) // total_price
+            no_price = 1e18 - yes_price
+        
+        # Build transaction
+        transaction = contract.functions.createMarket(
+            market_id,
+            request_hash,
+            title,
+            f"PMW-{title.upper()}",  # Symbol
+            yes_price,
+            no_price,
+            Web3.to_checksum_address(PMW_POOL_ADDRESS)
+        ).build_transaction({
+            'from': account.address,
+            'gas': 2000000,  # Adjust gas limit as needed
+            'gasPrice': w3.eth.gas_price,
+            'nonce': w3.eth.get_transaction_count(account.address),
+            'chainId': CHAIN_ID
+        })
+        
+        # Sign and send transaction
+        signed_txn = w3.eth.account.sign_transaction(transaction, ADMIN_PRIVATE_KEY)
+        tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+        
+        # Wait for transaction receipt
+        receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+        
+        if receipt["status"] == 1:
+            logger.info(f"Market deployed to blockchain: {id}, tx: {tx_hash.hex()}")
+            return True
+        else:
+            logger.error(f"Transaction failed: {tx_hash.hex()}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Error deploying market to blockchain: {e}")
+        return False
 
 def ensure_markets_directory():
     """Ensure the markets directory structure exists"""
@@ -446,6 +617,30 @@ async def generate_market(request: MarketRequest):
         save_markets(markets)
         
         logger.info(f"Market created and stored: {market_data.id}")
+
+        # TODO: Localhost replacement
+        url = f"{LOCALHOST_URL}/resolutions/{market_data.id}/outcome"
+
+        # Deploy the market to the blockchain
+        blockchain_deployed = False
+        try:            
+            blockchain_deployed = deploy_market(
+                id=market_data.id,
+                title=market_data.title,
+                url=url,
+                yes_probability=market_data.validation.yes_probability,
+                no_probability=market_data.validation.no_probability,
+            )
+            if blockchain_deployed:
+                logger.info(f"Market successfully deployed to blockchain: {market_data.id}")
+            else:
+                logger.warning(f"Failed to deploy market to blockchain: {market_data.id}")
+        except Exception as e:
+            logger.error(f"Error deploying to blockchain: {e}")
+            # Continue with local storage even if blockchain deployment fails
+        
+        # Add blockchain deployment status to market data
+        market_data.blockchain_deployed = blockchain_deployed
         
         return MarketResponse(
             success=True,
@@ -581,13 +776,19 @@ def delete_market(market_id: str):
         return {"message": "Market deleted successfully"}
     raise HTTPException(status_code=404, detail="Market not found")
 
+
+
 @app.get("/health")
 def health():
     """Health check endpoint"""
     markets = load_markets()
+    w3 = get_web3_instance()
+    
     return {
         "status": "healthy",
         "asi_api_configured": bool(ASI_API_KEY),
+        "blockchain_configured": bool(w3 and ADMIN_PRIVATE_KEY and PMW_ADDRESS != "0x0000000000000000000000000000000000000000"),
+        "blockchain_connected": bool(w3 and w3.is_connected()) if w3 else False,
         "model": MODEL_NAME,
         "stored_markets": len(markets)
     }
@@ -599,8 +800,9 @@ def root():
         "service": "Market Generator Agent",
         "version": "1.0.0",
         "model": MODEL_NAME,
+        "blockchain_enabled": bool(ADMIN_PRIVATE_KEY and PMW_ADDRESS != "0x0000000000000000000000000000000000000000"),
         "endpoints": {
-            "POST /generate": "Generate a prediction market",
+            "POST /generate": "Generate a prediction market (with blockchain deployment)",
             "GET /markets": "List all markets",
             "GET /markets/{id}": "Get specific market",
             "DELETE /markets/{id}": "Delete market",

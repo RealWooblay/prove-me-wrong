@@ -19,9 +19,8 @@ contract ProveMeWrong {
         uint256 yesPrice;
         uint256 noPrice;
         address pool;
-        uint256 expiry;
-        bool resolved;
-        bool outcome;
+        // 0 = no, 1 = yes, 2 = unknown
+        uint256 outcome;
     }
 
     uint256 private constant PRICE_SCALE = 1e18;
@@ -33,6 +32,11 @@ contract ProveMeWrong {
 
     // Market ID => Market
     mapping(bytes32 => Market) private _markets;
+
+    struct ResolutionData {
+        // 0 = no, 1 = yes, 2 = unknown
+        uint256 outcome;
+    }
 
     constructor() {
         pmw20Implementation = address(new PMW20());
@@ -56,15 +60,10 @@ contract ProveMeWrong {
         string memory symbol,
         uint256 yesPrice,
         uint256 noPrice,
-        address pool,
-        uint256 expiry
+        address pool
     ) external {
         if (_marketExists(marketId)) {
             revert("Market already exists");
-        }
-
-        if (expiry <= block.timestamp) {
-            revert("Expiry must be in the future");
         }
 
         if (PMWPool(pool).owner() != msg.sender) {
@@ -96,9 +95,7 @@ contract ProveMeWrong {
             yesPrice: yesPrice,
             noPrice: noPrice,
             pool: pool,
-            expiry: expiry,
-            resolved: false,
-            outcome: false
+            outcome: 2
         });
     }
 
@@ -113,10 +110,6 @@ contract ProveMeWrong {
 
         if (_marketResolved(marketId)) {
             revert("Market already resolved");
-        }
-
-        if (_marketExpired(marketId)) {
-            revert("Market expired");
         }
 
         if (amount == 0) {
@@ -163,7 +156,7 @@ contract ProveMeWrong {
             revert("Market not resolved");
         }
 
-        address token = _markets[marketId].outcome ? _markets[marketId].yes : _markets[marketId].no;
+        address token = _markets[marketId].outcome == 1 ? _markets[marketId].yes : _markets[marketId].no;
         
         uint256 balance = IPMW20(token).balanceOf(account);
         if(balance == 0) {
@@ -239,15 +232,16 @@ contract ProveMeWrong {
             revert("Invalid request hash");
         }
 
-        bool outcome = abi.decode(
+        ResolutionData memory resolutionData = abi.decode(
             data.data.responseBody.abiEncodedData,
-            (bool)
+            (ResolutionData)
         );
-        if (outcome == false && block.timestamp < _markets[marketId].expiry) {
+        uint256 outcome = resolutionData.outcome;
+
+        if (outcome == 2) {
             revert("Market not resolved");
         }
 
-        _markets[marketId].resolved = true;
         _markets[marketId].outcome = outcome;
     }
 
@@ -255,12 +249,8 @@ contract ProveMeWrong {
         return _markets[marketId].requestHash != bytes32(0);
     }
 
-    function _marketExpired(bytes32 marketId) internal view returns (bool) {
-        return _markets[marketId].expiry < block.timestamp;
-    }
-
     function _marketResolved(bytes32 marketId) internal view returns (bool) {
-        return _markets[marketId].resolved;
+        return _markets[marketId].outcome != 2;
     }
 
     function _hashRequest(

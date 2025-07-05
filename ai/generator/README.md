@@ -172,15 +172,97 @@ Common error scenarios:
 - API rate limiting
 - Network connectivity issues
 
-## Integration with Smart Contracts
+## Blockchain Integration
 
-The generated market data can be used to create markets on-chain. The response includes:
+The market generator now includes direct blockchain integration with the ProveMeWrong smart contract. Markets can be automatically deployed to the blockchain using an admin wallet.
 
-- `title`: Market title for the smart contract
-- `description`: Detailed description
-- `closeTimeISO`: Resolution date in ISO format
-- `outcomes`: Array of possible outcomes (always ["YES", "NO"])
-- `initialProb`: Initial probability for the YES outcome
+### Blockchain Configuration
+
+Set the following environment variables for blockchain integration:
+
+```bash
+# Ethereum RPC URL (e.g., Infura, Alchemy)
+export RPC_URL="https://sepolia.infura.io/v3/YOUR-PROJECT-ID"
+
+# Deployed ProveMeWrong contract address
+export CONTRACT_ADDRESS="0x..."
+
+# Admin wallet private key (without 0x prefix)
+export ADMIN_PRIVATE_KEY="your_private_key_here"
+
+# Chain ID (11155111 for Sepolia testnet)
+export CHAIN_ID="11155111"
+```
+
+### Quick Blockchain Setup
+
+Use the provided setup script:
+
+```bash
+./deploy_blockchain.sh
+```
+
+This will guide you through setting up the required environment variables.
+
+### Blockchain Features
+
+- **Automatic Deployment**: Markets are automatically deployed to the blockchain during generation
+- **Health Monitoring**: The health endpoint shows blockchain connection status
+- **Error Handling**: Graceful fallback if blockchain deployment fails
+- **Deployment Status**: Response includes `blockchain_deployed` field indicating deployment success
+
+### Enhanced API Response
+
+The `/generate` endpoint now includes blockchain deployment status:
+
+```json
+{
+  "success": true,
+  "market": {
+    "id": "market-id",
+    "title": "Will Bitcoin reach $100,000 by end of 2025?",
+    "blockchain_deployed": true,
+    "validation": {
+      "is_valid": true,
+      "yes_probability": 0.65,
+      "no_probability": 0.35
+    }
+  }
+}
+```
+
+#### Enhanced Health Check
+
+The health endpoint now includes blockchain status:
+
+```json
+{
+  "status": "healthy",
+  "asi_api_configured": true,
+  "blockchain_configured": true,
+  "blockchain_connected": true,
+  "model": "asi1-mini",
+  "stored_markets": 5
+}
+```
+
+### Integration with Smart Contracts
+
+The generated market data is automatically formatted for the ProveMeWrong contract:
+
+- **Market ID**: Unique identifier for the market
+- **Request Hash**: Hash of the market prompt for verification
+- **Token Names**: YES/NO token names and symbols
+- **Initial Prices**: Probability-based initial prices (normalized to sum to 100%)
+- **Expiry**: Unix timestamp for market expiration
+- **Pool Address**: Liquidity pool for the market
+
+### Security Considerations
+
+- **Private Key Security**: Store admin private keys securely
+- **Gas Management**: Ensure admin wallet has sufficient funds for gas fees
+- **Network Selection**: Use appropriate testnet/mainnet configuration
+- **Access Control**: Limit access to deployment endpoints in production
 
 ## Security Considerations
 
