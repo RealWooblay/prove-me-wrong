@@ -132,8 +132,13 @@ export default function ProveMeWrong() {
                 <div className="w-20 h-20 bg-gradient-to-br from-green-500/30 to-blue-600/30 rounded-3xl flex items-center justify-center mx-auto mb-6 transform rotate-2 group-hover:rotate-0 transition-transform duration-500">
                   <span className="text-5xl">🎯</span>
                 </div>
-                <h3 className="text-2xl font-bold mb-4 text-green-400 text-center">Make Predictions</h3>
-                <p className="text-slate-300 text-center leading-relaxed">Post claims on Twitter and let others bet against your predictions</p>
+                <h3 className="text-2xl font-bold mb-4 text-green-400 text-center">Create & Share Markets</h3>
+                <p className="text-slate-300 text-center leading-relaxed">Create prediction markets directly on Twitter. Automatically showing trading UI in tweets.</p>
+                <div className="mt-4 p-3 bg-slate-800/50 rounded-lg border border-green-400/30">
+                  <p className="text-sm text-green-300 text-center">
+                    <span className="font-bold">Simply post something like this:</span> "prove-me-wrong.com Bitcoin will hit $100k by end of year"
+                  </p>
+                </div>
                 <div className="absolute -top-2 -left-2 w-4 h-4 bg-green-400 rounded-full animate-bounce"></div>
               </div>
             </div>
@@ -281,12 +286,12 @@ export default function ProveMeWrong() {
                           </div>
                         </div>
 
-                        <Button
-                          className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white py-6 rounded-2xl text-2xl font-bold shadow-lg shadow-green-500/25 hover:shadow-green-500/40 transition-all duration-300 transform hover:scale-105"
-                          onClick={() => setIsConnected(true)}
-                        >
-                          {isConnected ? "🚀 DEPOSIT NOW & EARN BIG" : "🔗 Connect Wallet to Start Earning"}
-                        </Button>
+                        <div className="w-full bg-gradient-to-r from-slate-600 to-slate-700 text-white py-6 rounded-2xl text-2xl font-bold text-center border-2 border-dashed border-slate-500">
+                          🚧 Coming Soon
+                        </div>
+                        <p className="text-sm text-slate-400 text-center mt-4">
+                          Liquidity providers fund markets and earn a cut of winnings
+                        </p>
                       </div>
                     </div>
                   </div>
