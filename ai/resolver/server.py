@@ -790,7 +790,6 @@ async def resolve_market(request: ResolutionRequest, db: Session = Depends(get_d
         
         market = markets[request.market_id]
         
-        """
         # Check if already resolved
         resolutions = load_resolutions_from_db(db)
         if request.market_id in resolutions and not request.force_resolve:
@@ -820,18 +819,17 @@ async def resolve_market(request: ResolutionRequest, db: Session = Depends(get_d
         
         # Store resolution in database
         save_resolution_to_db(db, resolution)
-        """
 
         url = f"{RESOLUTIONS_API_URL}/resolver/resolutions/{market.id}/outcome"
 
         # Resolve the market onchain
         resolve_market_onchain(market.id, url)  
         
-        #logger.info(f"Market resolved: {resolution.outcome} (confidence: {resolution.confidence})")
+        logger.info(f"Market resolved: {resolution.outcome} (confidence: {resolution.confidence})")
         
         return ResolutionResponse(
             success=True,
-            resolution=None
+            resolution=resolution
         )
         
     except Exception as e:
@@ -862,12 +860,6 @@ async def resolve_all_markets(db: Session = Depends(get_db)):
             if market_id in resolutions:
                 continue
             
-            url = f"{RESOLUTIONS_API_URL}/resolver/resolutions/{market_id}/outcome"
-
-            # Resolve the market onchain
-            resolve_market_onchain(market_id, url)   
-
-            """
             # Check for auto-expiration first
             if check_auto_expiration(market):
                 resolution = ResolutionResult(
@@ -920,7 +912,6 @@ async def resolve_all_markets(db: Session = Depends(get_db)):
                         "outcome": "ERROR", 
                         "error": str(e)
                     })
-            """
         
         logger.info(f"Batch resolution complete. Processed {len(results)} markets")
         
@@ -1029,6 +1020,65 @@ def get_resolution(market_id: str, db: Session = Depends(get_db)):
         )
         return resolution_data
     raise HTTPException(status_code=404, detail="Resolution not found")
+
+@app.post("/resolutions/{market_id}/create")
+def create_resolution(market_id: str, outcome: str, db: Session = Depends(get_db)):
+    """Manually create or update a resolution record for a market if current outcome is not YES/NO and not auto_expired"""
+    try:
+        # Validate outcome
+        if outcome not in ["YES", "NO"]:
+            raise HTTPException(status_code=400, detail="Outcome must be YES or NO")
+        
+        # Check if resolution already exists
+        existing_resolution = db.query(Resolution).filter(Resolution.market_id == market_id).first()
+        if existing_resolution:
+            # Only allow update if current outcome is not YES/NO and not auto_expired
+            if existing_resolution.outcome in ["YES", "NO"] or existing_resolution.auto_expired:
+                raise HTTPException(status_code=409, detail="Resolution already exists for this market and cannot be overwritten")
+            # Update the existing resolution
+            existing_resolution.outcome = outcome
+            existing_resolution.confidence = 1.0
+            existing_resolution.reasoning = f"Manually updated resolution with outcome: {outcome}"
+            existing_resolution.evidence_sources = ["Manual resolution"]
+            existing_resolution.resolved_at = datetime.now().isoformat()
+            existing_resolution.auto_expired = False
+            db.commit()
+            logger.info(f"Updated manual resolution for market {market_id}: {outcome}")
+            return {
+                "success": True,
+                "message": f"Resolution updated for market {market_id} with outcome {outcome}",
+                "resolution": {
+                    "market_id": market_id,
+                    "outcome": outcome,
+                    "confidence": 1.0,
+                    "reasoning": f"Manually updated resolution with outcome: {outcome}",
+                    "evidence_sources": ["Manual resolution"],
+                    "resolved_at": existing_resolution.resolved_at,
+                    "auto_expired": False
+                }
+            }
+        # Create new resolution if none exists
+        resolution = ResolutionResult(
+            market_id=market_id,
+            outcome=outcome,
+            confidence=1.0,
+            reasoning=f"Manually created resolution with outcome: {outcome}",
+            evidence_sources=["Manual resolution"],
+            resolved_at=datetime.now().isoformat(),
+            auto_expired=False
+        )
+        save_resolution_to_db(db, resolution)
+        logger.info(f"Created manual resolution for market {market_id}: {outcome}")
+        return {
+            "success": True,
+            "message": f"Resolution created for market {market_id} with outcome {outcome}",
+            "resolution": resolution.dict()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating resolution: {e}")
+        raise HTTPException(status_code=500, detail=f"Error creating resolution: {str(e)}")
 
 @app.get("/resolutions/{market_id}/outcome")
 def get_market_outcome(market_id: str, db: Session = Depends(get_db)):
