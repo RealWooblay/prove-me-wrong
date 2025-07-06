@@ -28,13 +28,14 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout)
-    ]
+    ],
+    force=True
 )
 logger = logging.getLogger(__name__)
 
-# Force immediate flush for Railway logs
+# Ensure logs are flushed immediately for Railway
 import sys
-sys.stdout.reconfigure(line_buffering=True)
+sys.stdout.flush()
 
 app = FastAPI(title="Market Resolver Agent", version="1.0.0")
 
@@ -56,6 +57,11 @@ ADMIN_PRIVATE_KEY = os.getenv("ADMIN_PRIVATE_KEY", None)
 CHAIN_ID = int(os.getenv("CHAIN_ID", 0))
 
 # Database storage for resolutions (replaces file storage)
+
+# Constants for file storage (kept for compatibility)
+RESOLUTIONS_DIR = "resolutions"
+ACTIVE_RESOLUTIONS_FILE = "active_resolutions.json"
+ARCHIVED_RESOLUTIONS_FILE = "archived_resolutions.json"
 
 class MarketData(BaseModel):
     id: str
@@ -398,7 +404,7 @@ def resolve_market_onchain(market_id: str, url: str) -> bool:
             logger.error(f"Attestation transaction failed: {attestation_tx_hash.hex()}")
             return False
 
-        voting_round_id = (block_timestamp - 1658430000) / 90
+        voting_round_id = int((block_timestamp - 1658430000) / 90)
         logger.info(f"Voting round ID: {voting_round_id}")
 
         time.sleep(150)
@@ -1048,6 +1054,7 @@ def health():
         try:
             resolution_count = db.query(Resolution).count()
             markets = get_markets_from_generator()
+            w3 = get_web3_instance()
             return {
                 "status": "healthy",
                 "asi_api_configured": bool(ASI_API_KEY),
@@ -1083,6 +1090,7 @@ def health():
 @app.get("/")
 def root():
     """Root endpoint with API information"""
+    logger.info("Root endpoint accessed")
     return {
         "service": "Market Resolver Agent",
         "version": "1.0.0",
@@ -1096,6 +1104,14 @@ def root():
             "GET /health": "Health check"
         }
     }
+
+@app.get("/test-logging")
+def test_logging():
+    """Test endpoint to verify logging is working"""
+    logger.info("Test logging endpoint accessed")
+    logger.warning("This is a test warning message")
+    logger.error("This is a test error message")
+    return {"message": "Logging test completed", "timestamp": datetime.now().isoformat()}
 
 # Background task for periodic resolution
 def run_periodic_resolution():
@@ -1127,12 +1143,16 @@ async def start_background_tasks():
 async def startup_event():
     """Initialize database and clean up old resolutions on startup"""
     try:
-        init_db()
-        logger.info("Database initialized successfully")
+        # Force flush to ensure startup logs are visible
+        sys.stdout.flush()
         
-        logger.info("Market Resolver Agent starting up...")
+        logger.info("=== Market Resolver Agent Starting Up ===")
         logger.info(f"Generator API URL: {GENERATOR_API_URL}")
         logger.info(f"ASI API configured: {bool(ASI_API_KEY)}")
+        logger.info(f"Blockchain configured: {bool(RPC_URL and PMW_ADDRESS and ADMIN_PRIVATE_KEY)}")
+        
+        init_db()
+        logger.info("Database initialized successfully")
         
         # Archive old resolutions
         db = SessionLocal()
@@ -1142,5 +1162,9 @@ async def startup_event():
                 logger.info(f"Archived {updated} old resolutions on startup")
         finally:
             db.close()
+            
+        logger.info("=== Market Resolver Agent Startup Complete ===")
+        sys.stdout.flush()
     except Exception as e:
         logger.error(f"Error during startup: {e}")
+        sys.stdout.flush()
