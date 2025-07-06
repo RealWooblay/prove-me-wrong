@@ -42,23 +42,19 @@ export interface MarketResponse {
 }
 
 export interface OnChainMarketData {
-    marketId: string;
-    yesProbability: number;
-    noProbability: number;
-    totalVolume: number;
-    yesVolume: number;
-    noVolume: number;
-    isActive: boolean;
-    isResolved: boolean;
-    outcome?: 'YES' | 'NO';
+    hashedMarketId: string;
+    yes: string;
+    no: string;
+    yesPrice: bigint;
+    noPrice: bigint;
+    pool: string;
+    outcome: bigint;
 }
 
 import config from '../config/config';
 import { flareTestnet } from 'viem/chains';
-import { createPublicClient, http } from 'viem'
-
-// AI Generator API configuration
-const AI_GENERATOR_URL = config.AI_GENERATOR_URL;
+import { createPublicClient, createWalletClient, getAddress, http, keccak256, toBytes } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts';
 
 export class MarketService {
     private static instance: MarketService;
@@ -221,59 +217,6 @@ export class MarketService {
     }
 
     /**
-     * Get real-time market probabilities from on-chain data
-     * This is called frequently to update the UI with current probabilities
-     * Later this will read from actual smart contracts
-     */
-    async getMarketProbabilities(marketId: string): Promise<{ yesProb: number; noProb: number; isValid: boolean }> {
-        console.log(`[MarketService] Getting probabilities for market ID: ${marketId}`);
-
-        // First try to get cached market data (from AI validation)
-        const marketData = await this.getMarketData(marketId);
-
-        if (marketData && marketData.validation.is_valid) {
-            // Use AI validation probabilities as base
-            const baseYesProb = marketData.validation.yes_probability * 100;
-            const baseNoProb = marketData.validation.no_probability * 100;
-
-            console.log(`[MarketService] Using AI validation probabilities - YES: ${baseYesProb}%, NO: ${baseNoProb}%`);
-
-            // Add some volatility to simulate real-time trading
-            const volatility = 3; // ±3%
-            const yesProb = Math.max(0, Math.min(100, baseYesProb + (Math.random() - 0.5) * volatility));
-            const noProb = Math.max(0, Math.min(100, baseNoProb + (Math.random() - 0.5) * volatility));
-
-            // Normalize to 100%
-            const total = yesProb + noProb;
-            const normalizedYes = (yesProb / total) * 100;
-            const normalizedNo = (noProb / total) * 100;
-
-            console.log(`[MarketService] Final probabilities - YES: ${Math.round(normalizedYes * 10) / 10}%, NO: ${Math.round(normalizedNo * 10) / 10}%`);
-
-            return {
-                yesProb: Math.round(normalizedYes * 10) / 10, // Round to 1 decimal
-                noProb: Math.round(normalizedNo * 10) / 10,
-                isValid: true
-            };
-        }
-
-        // Fallback to on-chain data if available
-        const onChainData = await this.getOnChainData(marketId);
-
-        if (!onChainData || !onChainData.isActive) {
-            console.log(`[MarketService] No valid market data found for market ID: ${marketId}`);
-            return { yesProb: 0, noProb: 0, isValid: false };
-        }
-
-        console.log(`[MarketService] Using on-chain probabilities - YES: ${onChainData.yesProbability}%, NO: ${onChainData.noProbability}%`);
-        return {
-            yesProb: onChainData.yesProbability,
-            noProb: onChainData.noProbability,
-            isValid: true
-        };
-    }
-
-    /**
      * Read on-chain market data (simulated for now)
      * This would connect to the actual smart contract
      * TODO: Replace with actual smart contract calls
@@ -300,48 +243,75 @@ export class MarketService {
             if (!marketData.validation.is_valid) {
                 // Invalid market - no on-chain data
                 console.log(`[MarketService] Market invalid according to AI, no on-chain data: ${marketId}`);
-                return {
-                    marketId,
-                    yesProbability: 0,
-                    noProbability: 0,
-                    totalVolume: 0,
-                    yesVolume: 0,
-                    noVolume: 0,
-                    isActive: false,
-                    isResolved: false
-                };
+                return null;
             }
 
-            // Valid market - simulate real-time probabilities
-            const baseYesProb = marketData.validation.yes_probability * 100;
-            const baseNoProb = marketData.validation.no_probability * 100;
+            const publicClient = createPublicClient({
+                chain: flareTestnet,
+                transport: http()
+            });
 
-            // Add some volatility to simulate trading
-            const volatility = 5; // ±5%
-            const yesProb = Math.max(0, Math.min(100, baseYesProb + (Math.random() - 0.5) * volatility));
-            const noProb = Math.max(0, Math.min(100, baseNoProb + (Math.random() - 0.5) * volatility));
+            const hashedMarketId = keccak256(toBytes(marketId));
 
-            // Normalize to 100%
-            const total = yesProb + noProb;
-            const normalizedYes = (yesProb / total) * 100;
-            const normalizedNo = (noProb / total) * 100;
+            const market = await publicClient.readContract({
+                address: getAddress(config.ADDRESSES.PMW),
+                abi: [{
+                    "inputs": [
+                        {
+                            "internalType": "bytes32",
+                            "name": "marketId",
+                            "type": "bytes32"
+                        }
+                    ],
+                    "name": "getMarket",
+                    "outputs": [
+                        {
+                            "internalType": "address",
+                            "name": "",
+                            "type": "address"
+                        },
+                        {
+                            "internalType": "address",
+                            "name": "",
+                            "type": "address"
+                        },
+                        {
+                            "internalType": "uint256",
+                            "name": "",
+                            "type": "uint256"
+                        },
+                        {
+                            "internalType": "uint256",
+                            "name": "",
+                            "type": "uint256"
+                        },
+                        {
+                            "internalType": "address",
+                            "name": "",
+                            "type": "address"
+                        },
+                        {
+                            "internalType": "uint256",
+                            "name": "",
+                            "type": "uint256"
+                        }
+                    ],
+                    "stateMutability": "view",
+                    "type": "function"
+                }],
+                functionName: 'getMarket',
+                args: [hashedMarketId]
+            });
 
-            const onChainData: OnChainMarketData = {
-                marketId,
-                yesProbability: Math.round(normalizedYes * 10) / 10, // Round to 1 decimal
-                noProbability: Math.round(normalizedNo * 10) / 10,
-                totalVolume: Math.floor(Math.random() * 10000) + 1000, // Random volume
-                yesVolume: Math.floor(Math.random() * 5000) + 500,
-                noVolume: Math.floor(Math.random() * 5000) + 500,
-                isActive: true,
-                isResolved: false
+            return {
+                hashedMarketId,
+                yes: market[0],
+                no: market[1],
+                yesPrice: market[2],
+                noPrice: market[3],
+                pool: market[4],
+                outcome: market[5]
             };
-
-            // Cache the on-chain data
-            this.onChainCache.set(marketId, onChainData);
-            console.log(`[MarketService] Cached on-chain data for market ID: ${marketId}`);
-
-            return onChainData;
         } catch (error) {
             console.error('[MarketService] Error reading on-chain data:', error);
             return null;
@@ -405,7 +375,7 @@ export class MarketService {
      */
     async isMarketValid(marketId: string): Promise<boolean> {
         const onChainData = await this.getOnChainData(marketId);
-        return onChainData?.isActive || false;
+        return onChainData !== null;
     }
 
     /**
@@ -427,7 +397,7 @@ export class MarketService {
     /**
      * Get market outcome (true, false, or undefined)
      */
-    async getMarketOutcome(marketId: string): Promise<{ outcome: 'true' | 'false' | 'undefined'; status: string }> {
+    async getMarketOutcome(marketId: string): Promise<{ outcome: number; status: string }> {
         try {
             const response = await new Promise<{ success: boolean; data?: any; error?: string }>((resolve) => {
                 window.chrome.runtime.sendMessage({
@@ -444,24 +414,24 @@ export class MarketService {
             if (response.success && response.data) {
                 return response.data;
             } else {
-                return { outcome: 'undefined', status: 'error' };
+                return { outcome: 2, status: 'error' };
             }
         } catch (error) {
             console.error('Error getting market outcome:', error);
-            return { outcome: 'undefined', status: 'error' };
+            return { outcome: 2, status: 'error' };
         }
     }
 
     async resolveMarket(marketId: string) {
         try {
             const { outcome } = await this.getMarketOutcome(marketId);
-            if (outcome === 'true' || outcome === 'false') {
+            if (outcome !== 2) {
                 const marketData = await this.getMarketData(marketId);
                 if (!marketData) {
                     throw new Error('Failed to get market data');
                 }
 
-                const abiEncodedRequest = await this.prepareFDCRequest(`TODO`);
+                const abiEncodedRequest = await this.prepareFDCRequest(`${config.AI_GENERATOR_URL}/resolver/resolutions/${marketId}/outcome`);
                 if (!abiEncodedRequest) {
                     throw new Error('Failed to prepare FDC request');
                 }
@@ -472,7 +442,7 @@ export class MarketService {
                 });
 
                 const requestFee = await publicClient.readContract({
-                    address: "0x191a1282Ac700edE65c5B0AaF313BAcC3eA7fC7e",
+                    address: getAddress(config.ADDRESSES.FDC_FEE_CONFIG),
                     abi: [
                         {
                             "inputs": [
@@ -499,6 +469,60 @@ export class MarketService {
                 });
 
                 console.log(`[MarketService] Request fee: ${requestFee}`);
+
+                const account = privateKeyToAccount(config.ADMIN.PRIVATE_KEY as `0x${string}`);
+                const adminClient = createWalletClient({
+                    account,
+                    chain: flareTestnet,
+                    transport: http()
+                });
+
+                const attestationTx = await adminClient.writeContract({
+                    address: getAddress(config.ADDRESSES.FDC_HUB),
+                    abi: [{
+                        "inputs": [
+                            {
+                                "internalType": "bytes",
+                                "name": "_data",
+                                "type": "bytes"
+                            }
+                        ],
+                        "name": "requestAttestation",
+                        "outputs": [],
+                        "stateMutability": "payable",
+                        "type": "function"
+                    }],
+                    functionName: 'requestAttestation',
+                    args: [abiEncodedRequest as `0x${string}`],
+                    value: requestFee
+                });
+
+                const attestationReceipt = await publicClient.waitForTransactionReceipt({
+                    hash: attestationTx
+                });
+
+                const blockNumber = attestationReceipt.blockNumber;
+                const block = await publicClient.getBlock({
+                    blockNumber: blockNumber
+                });
+
+                const votingRoundId = (BigInt(block.timestamp) - 1658430000n) / 90n;
+                console.log(`[MarketService] Voting round ID: ${votingRoundId}`);
+
+                let proof: any | undefined;
+                for (let i = 0; i < 10; i++) {
+                    proof = await this.getFDCProof(votingRoundId, abiEncodedRequest);
+                    if (proof) {
+                        break;
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 15000));
+                    console.log(`[MarketService] Waiting for FDC proof... ${i + 1}/10`);
+                }
+                if (!proof) {
+                    throw new Error('Failed to get FDC proof');
+                }
+
+                console.log(`[MarketService] FDC proof:`, proof);
             }
         } catch (error) {
             console.error('Error resolving market:', error);
@@ -508,6 +532,8 @@ export class MarketService {
 
     async prepareFDCRequest(url: string): Promise<string | undefined> {
         try {
+            console.log(`[MarketService] Preparing FDC request for URL: ${url}`);
+
             const response = await fetch("https://jq-verifier-test.flare.rocks/JsonApi/prepareRequest", {
                 method: "POST",
                 headers: {
@@ -530,6 +556,7 @@ export class MarketService {
             }
 
             const data = await response.json();
+            console.log(`[MarketService] FDC request response:`, data);
             if (data.status != "VALID") {
                 throw new Error('FDC request returned invalid status');
             }
@@ -542,6 +569,32 @@ export class MarketService {
             return abiEncodedRequest;
         } catch (error) {
             console.error('Error preparing FDC request:', error);
+            return undefined;
+        }
+    }
+
+    async getFDCProof(votingRoundId: bigint, abiEncodedRequest: string): Promise<any | undefined> {
+        try {
+            const response = await fetch(`https://ctn2-data-availability.flare.network/api/v1/fdc/proof-by-request-round`, {
+                method: "POST",
+                headers: {
+                    "X-API-KEY": "flare-oxford-2025",
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    "votingRoundId": votingRoundId.toString(),
+                    "requestBytes": abiEncodedRequest
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to get FDC proof');
+            }
+
+            const data = await response.json();
+            return data;
+        } catch (error) {
+            console.error('Error getting FDC proof:', error);
             return undefined;
         }
     }

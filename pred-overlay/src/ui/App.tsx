@@ -414,11 +414,15 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
 
                 // Get initial probabilities immediately after validation
                 console.log(`[App] Getting initial probabilities for market ID: ${marketId}`);
-                const probabilities = await marketService.getMarketProbabilities(marketId);
-                setYesProb(probabilities.yesProb);
-                setNoProb(probabilities.noProb);
-                console.log(`[App] Initial probabilities set - YES: ${probabilities.yesProb}%, NO: ${probabilities.noProb}%`);
+                const data = await marketService.getOnChainData(marketId);
+                if (!data) {
+                    setStatus('Market not found on-chain');
+                    return;
+                }
 
+                setYesProb(Number(data.noPrice) / 10 ** 16);
+                setNoProb(Number(data.yesPrice) / 10 ** 16);
+                console.log(`[App] Initial probabilities set - YES: ${data.yesPrice}%, NO: ${data.noPrice}%`);
             } else {
                 if (validation.error && validation.error.includes('Cannot connect to AI generator')) {
                     setIsValidMarket(true);
@@ -447,15 +451,14 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
         try {
             console.log(`[App] Updating probabilities for market ID: ${marketId}`);
 
-            const probabilities = await marketService.getMarketProbabilities(marketId);
-            setYesProb(probabilities.yesProb);
-            setNoProb(probabilities.noProb);
-
-            if (probabilities.isValid) {
-                setStatus('Market active - probabilities updated');
-            } else {
-                setStatus('Market validated but not found on-chain');
+            const data = await marketService.getOnChainData(marketId);
+            if (!data) {
+                setStatus('Market not found on-chain');
+                return;
             }
+
+            setYesProb(Number(data.noPrice) / 10 ** 16);
+            setNoProb(Number(data.yesPrice) / 10 ** 16);
         } catch (error) {
             console.error('Error updating probabilities:', error);
             // Don't change status on probability update errors
@@ -508,6 +511,9 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
         }
         const market = marketData.market;
 
+        const onchainData = await marketService.getOnChainData(market.id);
+        console.log(`[App] Onchain data:`, onchainData);
+
         await marketService.resolveMarket(market.id);
 
         // Validate bet amount
@@ -524,13 +530,10 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
         try {
             setStatus('Approving spending...');
 
-            const pmwAddress = "0xB9dc26a26711a0D158dDBa2342043c5Bb431bC9F";
-            const tokenAddress = "0xC1A5B41512496B80903D1f32d6dEa3a73212E71F";
-
             const hashedMarketId = keccak256(toBytes(market.id));
 
             const x = await publicClient.readContract({
-                address: getAddress(pmwAddress),
+                address: getAddress(config.ADDRESSES.PMW),
                 abi: [{
                     "inputs": [
                         {
@@ -595,14 +598,14 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
                     stateMutability: 'nonpayable'
                 }],
                 functionName: 'approve',
-                args: [getAddress(pmwAddress), betAmountWei]
+                args: [getAddress(config.ADDRESSES.PMW), betAmountWei]
             });
 
             const approveTx = await providerRequest({
                 method: "eth_sendTransaction",
                 params: [{
                     from: account,
-                    to: getAddress(tokenAddress),
+                    to: getAddress(config.ADDRESSES.USDT),
                     data: approveData,
                     gas: "0x186a0", // 100000 gas limit for approve
                     gasPrice: "0x9184e72a000", // 10000000000000 wei
@@ -633,7 +636,7 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
                 method: "eth_sendTransaction",
                 params: [{
                     from: account,
-                    to: getAddress(pmwAddress),
+                    to: getAddress(config.ADDRESSES.PMW),
                     data: mintData,
                     gas: "0x7A120", // 500000 gas limit for mint
                     gasPrice: "0x9184e72a000", // 10000000000000 wei

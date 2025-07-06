@@ -54,6 +54,17 @@ export const config = {
         // Default market expiration days
         defaultExpirationDays: 30,
     },
+
+    ADDRESSES: {
+        PMW: '0xB9dc26a26711a0D158dDBa2342043c5Bb431bC9F',
+        USDT: '0xC1A5B41512496B80903D1f32d6dEa3a73212E71F',
+        FDC_HUB: '0x48aC463d7975828989331F4De43341627b9c5f1D',
+        FDC_FEE_CONFIG: '0x191a1282Ac700edE65c5B0AaF313BAcC3eA7fC7e'
+    },
+
+    ADMIN: {
+        PRIVATE_KEY: '0xb81faea7d21760bdd498e56b570c8cf7351c1aa851efe4b69da6c8bd0cf0a53f'
+    }
 };
 
 export default config; 
