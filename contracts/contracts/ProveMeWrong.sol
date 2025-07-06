@@ -57,7 +57,7 @@ contract ProveMeWrong {
         createMarket(marketId, requestHash, yesPrice, noPrice, pool);
     }
     */
-   
+
     function createPool(address asset, address owner) public returns (address) {
         address pool = Clones.clone(pmwPoolImplementation);
         PMWPool(pool).initialize(
@@ -88,20 +88,12 @@ contract ProveMeWrong {
         if (yesPrice + noPrice != PRICE_SCALE) {
             revert("Prices must sum to 100%");
         }
-        
+
         address yes = Clones.clone(pmw20Implementation);
-        IPMW20(yes).initialize(
-            "yes",
-            "YES",
-            address(this)
-        );
+        IPMW20(yes).initialize("yes", "YES", address(this));
 
         address no = Clones.clone(pmw20Implementation);
-        IPMW20(no).initialize(
-            "no",
-            "NO",
-            address(this)
-        );
+        IPMW20(no).initialize("no", "NO", address(this));
 
         _markets[marketId] = Market({
             requestHash: requestHash,
@@ -114,8 +106,15 @@ contract ProveMeWrong {
         });
     }
 
-    function getMarket(bytes32 marketId) public view returns (address, address, uint256, uint256, address, uint256) {
+    function getMarket(
+        bytes32 marketId
+    )
+        public
+        view
+        returns (bytes32, address, address, uint256, uint256, address, uint256)
+    {
         return (
+            _markets[marketId].requestHash,
             _markets[marketId].yes,
             _markets[marketId].no,
             _markets[marketId].yesPrice,
@@ -125,11 +124,7 @@ contract ProveMeWrong {
         );
     }
 
-    function mint(
-        bytes32 marketId,
-        uint256 amount,
-        bool outcome
-    ) external {
+    function mint(bytes32 marketId, uint256 amount, bool outcome) external {
         if (!_marketExists(marketId)) {
             revert("Market does not exist");
         }
@@ -155,9 +150,13 @@ contract ProveMeWrong {
         // Calculate tokens to mint based on current prices (using amount after fee)
         uint256 tokensToMint;
         if (outcome == true) {
-            tokensToMint = (betAmount * PRICE_SCALE) / _markets[marketId].yesPrice;
+            tokensToMint =
+                (betAmount * PRICE_SCALE) /
+                _markets[marketId].yesPrice;
         } else {
-            tokensToMint = (betAmount * PRICE_SCALE) / _markets[marketId].noPrice;
+            tokensToMint =
+                (betAmount * PRICE_SCALE) /
+                _markets[marketId].noPrice;
         }
 
         // Mint tokens representing potential winnings
@@ -171,22 +170,21 @@ contract ProveMeWrong {
         _updatePricesWithBondingCurve(marketId, outcome);
     }
 
-    function redeem(
-        bytes32 marketId,
-        address account
-    ) external {
+    function redeem(bytes32 marketId, address account) external {
         if (!_marketExists(marketId)) {
             revert("Market does not exist");
         }
 
-        if(!_marketResolved(marketId)) {
+        if (!_marketResolved(marketId)) {
             revert("Market not resolved");
         }
 
-        address token = _markets[marketId].outcome == 1 ? _markets[marketId].yes : _markets[marketId].no;
-        
+        address token = _markets[marketId].outcome == 1
+            ? _markets[marketId].yes
+            : _markets[marketId].no;
+
         uint256 balance = IPMW20(token).balanceOf(account);
-        if(balance == 0) {
+        if (balance == 0) {
             revert("No tokens to redeem");
         }
 
@@ -197,9 +195,12 @@ contract ProveMeWrong {
         );
     }
 
-    function _updatePricesWithBondingCurve(bytes32 marketId, bool outcome) private {
+    function _updatePricesWithBondingCurve(
+        bytes32 marketId,
+        bool outcome
+    ) private {
         Market storage market = _markets[marketId];
-        
+
         uint256 yesSupply = IPMW20(market.yes).totalSupply();
         uint256 noSupply = IPMW20(market.no).totalSupply();
         uint256 totalSupply = yesSupply + noSupply;
@@ -208,23 +209,28 @@ contract ProveMeWrong {
         uint256 adjustmentFactor = CURVE_FACTOR;
         if (totalSupply > PRICE_SCALE) {
             // Decrease adjustment rate as supply increases
-            adjustmentFactor = (CURVE_FACTOR * PRICE_SCALE) / 
-                             (PRICE_SCALE + (totalSupply - PRICE_SCALE) / 10);
+            adjustmentFactor =
+                (CURVE_FACTOR * PRICE_SCALE) /
+                (PRICE_SCALE + (totalSupply - PRICE_SCALE) / 10);
         }
 
         // Calculate price adjustments based on the minting action
         if (outcome == true) {
             // Minting yes tokens: increase yes price, decrease no price
-            uint256 yesIncrease = (adjustmentFactor * market.yesPrice) / PRICE_SCALE;
-            uint256 noDecrease = (adjustmentFactor * market.noPrice) / PRICE_SCALE;
-            
+            uint256 yesIncrease = (adjustmentFactor * market.yesPrice) /
+                PRICE_SCALE;
+            uint256 noDecrease = (adjustmentFactor * market.noPrice) /
+                PRICE_SCALE;
+
             market.yesPrice = market.yesPrice + yesIncrease;
             market.noPrice = market.noPrice - noDecrease;
         } else {
             // Minting no tokens: increase no price, decrease yes price
-            uint256 noIncrease = (adjustmentFactor * market.noPrice) / PRICE_SCALE;
-            uint256 yesDecrease = (adjustmentFactor * market.yesPrice) / PRICE_SCALE;
-            
+            uint256 noIncrease = (adjustmentFactor * market.noPrice) /
+                PRICE_SCALE;
+            uint256 yesDecrease = (adjustmentFactor * market.yesPrice) /
+                PRICE_SCALE;
+
             market.noPrice = market.noPrice + noIncrease;
             market.yesPrice = market.yesPrice - yesDecrease;
         }
@@ -254,12 +260,12 @@ contract ProveMeWrong {
         if (
             _markets[marketId].requestHash !=
             _hashRequest(
-                data.data.requestBody.url, 
+                data.data.requestBody.url,
                 data.data.requestBody.httpMethod,
-                data.data.requestBody.headers, 
-                data.data.requestBody.queryParams, 
+                data.data.requestBody.headers,
+                data.data.requestBody.queryParams,
                 data.data.requestBody.body,
-                data.data.requestBody.postProcessJq, 
+                data.data.requestBody.postProcessJq,
                 data.data.requestBody.abiSignature
             )
         ) {
@@ -296,15 +302,18 @@ contract ProveMeWrong {
         string memory postProcessJq,
         string memory abiSignature
     ) private pure returns (bytes32) {
-        return keccak256(abi.encode(
-            url, 
-            httpMethod,
-            headers, 
-            queryParams, 
-            body, 
-            postProcessJq, 
-            abiSignature
-        ));
+        return
+            keccak256(
+                abi.encode(
+                    url,
+                    httpMethod,
+                    headers,
+                    queryParams,
+                    body,
+                    postProcessJq,
+                    abiSignature
+                )
+            );
     }
 
     function _isJsonApiProofValid(

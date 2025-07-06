@@ -474,6 +474,59 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
             const pmwAddress = "0xB9dc26a26711a0D158dDBa2342043c5Bb431bC9F";
             const tokenAddress = "0xC1A5B41512496B80903D1f32d6dEa3a73212E71F";
 
+            const hashedMarketId = keccak256(toBytes(market.id));
+
+            const x = await publicClient.readContract({
+                address: getAddress(pmwAddress),
+                abi: [{
+                    "inputs": [
+                      {
+                        "internalType": "bytes32",
+                        "name": "marketId",
+                        "type": "bytes32"
+                      }
+                    ],
+                    "name": "getMarket",
+                    "outputs": [
+                      {
+                        "internalType": "address",
+                        "name": "",
+                        "type": "address"
+                      },
+                      {
+                        "internalType": "address",
+                        "name": "",
+                        "type": "address"
+                      },
+                      {
+                        "internalType": "uint256",
+                        "name": "",
+                        "type": "uint256"
+                      },
+                      {
+                        "internalType": "uint256",
+                        "name": "",
+                        "type": "uint256"
+                      },
+                      {
+                        "internalType": "address",
+                        "name": "",
+                        "type": "address"
+                      },
+                      {
+                        "internalType": "uint256",
+                        "name": "",
+                        "type": "uint256"
+                      }
+                    ],
+                    "stateMutability": "view",
+                    "type": "function"
+                }],
+                functionName: "getMarket",
+                args: [hashedMarketId]
+            });
+            console.warn(x)
+
             // Convert bet amount to wei
             const betAmountWei = parseUnits(betAmount, 6);
             
@@ -520,7 +573,7 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
                     stateMutability: 'nonpayable'
                 }],
                 functionName: 'mint',
-                args: [keccak256(toBytes(market.id)), betAmountWei, choice === 'YES']
+                args: ["0xc9462894569783d32ee536da4d97b1fe9d832a9afe46cf76169ff5ee46f0e457", betAmountWei, choice === 'YES']
             });
 
             const mintTx = await providerRequest({
@@ -529,7 +582,7 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
                     from: account,
                     to: getAddress(pmwAddress),
                     data: mintData,
-                    gas: "0x186a0", // 100000 gas limit for mint
+                    gas: "0x7A120", // 500000 gas limit for mint
                     gasPrice: "0x9184e72a000", // 10000000000000 wei
                 }]
             });
