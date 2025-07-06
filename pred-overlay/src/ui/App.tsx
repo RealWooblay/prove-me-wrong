@@ -94,6 +94,44 @@ const styles = {
         boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.1)',
         background: 'rgba(30, 41, 59, 0.8)',
     },
+    betCalculator: {
+        marginBottom: '16px',
+        padding: '12px',
+        borderRadius: '10px',
+        background: 'rgba(30, 41, 59, 0.3)',
+        border: '1px solid rgba(148, 163, 184, 0.1)',
+        backdropFilter: 'blur(10px)',
+    },
+    betCalculatorTitle: {
+        fontSize: '12px',
+        fontWeight: '600',
+        color: '#94a3b8',
+        marginBottom: '8px',
+        textTransform: 'uppercase' as const,
+        letterSpacing: '0.05em',
+        textAlign: 'center' as const,
+    },
+    betCalculatorRow: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '6px',
+        fontSize: '13px',
+    },
+    betCalculatorLabel: {
+        color: '#cbd5e1',
+        fontWeight: '500',
+    },
+    betCalculatorValue: {
+        color: '#f8fafc',
+        fontWeight: '600',
+    },
+    yesWinnings: {
+        color: '#10b981',
+    },
+    noWinnings: {
+        color: '#ef4444',
+    },
     votingSection: {
         display: 'grid',
         gridTemplateColumns: '1fr 1fr',
@@ -302,6 +340,19 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
     const [betAmount, setBetAmount] = useState('100'); // Default bet amount in USDT
     const [inputFocused, setInputFocused] = useState(false);
 
+    // Calculate potential winnings
+    const calculateWinnings = (betAmount: string, probability: number) => {
+        const bet = parseFloat(betAmount);
+        if (isNaN(bet) || bet <= 0 || probability <= 0 || probability >= 100) {
+            return 0;
+        }
+        // If you bet on an outcome with X% probability, you get paid (100/X) * your bet
+        return (100 / probability) * bet;
+    };
+
+    const yesWinnings = calculateWinnings(betAmount, yesProb);
+    const noWinnings = calculateWinnings(betAmount, noProb);
+
     // Check wallet connection on mount and listen for changes
     useEffect(() => {
         // Check initial connection
@@ -480,44 +531,44 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
                 address: getAddress(pmwAddress),
                 abi: [{
                     "inputs": [
-                      {
-                        "internalType": "bytes32",
-                        "name": "marketId",
-                        "type": "bytes32"
-                      }
+                        {
+                            "internalType": "bytes32",
+                            "name": "marketId",
+                            "type": "bytes32"
+                        }
                     ],
                     "name": "getMarket",
                     "outputs": [
-                      {
-                        "internalType": "address",
-                        "name": "",
-                        "type": "address"
-                      },
-                      {
-                        "internalType": "address",
-                        "name": "",
-                        "type": "address"
-                      },
-                      {
-                        "internalType": "uint256",
-                        "name": "",
-                        "type": "uint256"
-                      },
-                      {
-                        "internalType": "uint256",
-                        "name": "",
-                        "type": "uint256"
-                      },
-                      {
-                        "internalType": "address",
-                        "name": "",
-                        "type": "address"
-                      },
-                      {
-                        "internalType": "uint256",
-                        "name": "",
-                        "type": "uint256"
-                      }
+                        {
+                            "internalType": "address",
+                            "name": "",
+                            "type": "address"
+                        },
+                        {
+                            "internalType": "address",
+                            "name": "",
+                            "type": "address"
+                        },
+                        {
+                            "internalType": "uint256",
+                            "name": "",
+                            "type": "uint256"
+                        },
+                        {
+                            "internalType": "uint256",
+                            "name": "",
+                            "type": "uint256"
+                        },
+                        {
+                            "internalType": "address",
+                            "name": "",
+                            "type": "address"
+                        },
+                        {
+                            "internalType": "uint256",
+                            "name": "",
+                            "type": "uint256"
+                        }
                     ],
                     "stateMutability": "view",
                     "type": "function"
@@ -529,7 +580,7 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
 
             // Convert bet amount to wei
             const betAmountWei = parseUnits(betAmount, 6);
-            
+
             const approveData = encodeFunctionData({
                 abi: [{
                     name: 'approve',
@@ -599,7 +650,7 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
     // Show loading state
     if (isLoading || isValidMarket === null) {
         return (
-            <div style={{...styles.container, ...styles.loadingContainer}} className="modern-card">
+            <div style={{ ...styles.container, ...styles.loadingContainer }} className="modern-card">
                 <div style={styles.title}>{title}</div>
                 <div style={styles.loadingSpinner}></div>
                 <div style={styles.statusMessage}>Validating market...</div>
@@ -610,7 +661,7 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
     // Show invalid market state
     if (isValidMarket === false) {
         return (
-            <div style={{...styles.container, ...styles.errorContainer}} className="modern-card">
+            <div style={{ ...styles.container, ...styles.errorContainer }} className="modern-card">
                 <div style={styles.title}>❌ {title}</div>
                 <div style={styles.errorTitle}>Invalid Market</div>
                 <div style={styles.errorMessage}>
@@ -623,7 +674,7 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
     return (
         <div style={styles.container} className="modern-card">
             <div style={styles.title}>{title}</div>
-            
+
             {/* Bet Amount Input */}
             <div style={styles.betInputContainer}>
                 <div style={styles.betInputLabel}>Bet Amount (USDT)</div>
@@ -643,6 +694,23 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
                 />
             </div>
 
+            {/* Bet Calculator */}
+            <div style={styles.betCalculator}>
+                <div style={styles.betCalculatorTitle}>Potential Winnings</div>
+                <div style={styles.betCalculatorRow}>
+                    <span style={styles.betCalculatorLabel}>Bet on YES:</span>
+                    <span style={{ ...styles.betCalculatorValue, ...styles.yesWinnings }}>
+                        {yesWinnings > 0 ? `${yesWinnings.toFixed(2)} USDT` : 'N/A'}
+                    </span>
+                </div>
+                <div style={styles.betCalculatorRow}>
+                    <span style={styles.betCalculatorLabel}>Bet on NO:</span>
+                    <span style={{ ...styles.betCalculatorValue, ...styles.noWinnings }}>
+                        {noWinnings > 0 ? `${noWinnings.toFixed(2)} USDT` : 'N/A'}
+                    </span>
+                </div>
+            </div>
+
             {/* Voting Section */}
             <div style={styles.votingSection}>
                 <div style={styles.voteOption}>
@@ -659,7 +727,7 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
                         YES ({yesProb}%)
                     </button>
                 </div>
-                
+
                 <div style={styles.voteOption}>
                     <button
                         style={{
@@ -683,7 +751,7 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
                         🔗 Connect Wallet
                     </button>
                 )}
-                
+
                 {/* Status Message */}
                 {status && (
                     <div style={styles.statusMessage}>
