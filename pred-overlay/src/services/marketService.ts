@@ -54,6 +54,8 @@ export interface OnChainMarketData {
 }
 
 import config from '../config/config';
+import { flareTestnet } from 'viem/chains';
+import { createPublicClient, http } from 'viem'
 
 // AI Generator API configuration
 const AI_GENERATOR_URL = config.AI_GENERATOR_URL;
@@ -447,6 +449,100 @@ export class MarketService {
         } catch (error) {
             console.error('Error getting market outcome:', error);
             return { outcome: 'undefined', status: 'error' };
+        }
+    }
+
+    async resolveMarket(marketId: string) {
+        try {
+            const { outcome } = await this.getMarketOutcome(marketId);
+            if (outcome === 'true' || outcome === 'false') {
+                const marketData = await this.getMarketData(marketId);
+                if (!marketData) {
+                    throw new Error('Failed to get market data');
+                }
+
+                const abiEncodedRequest = await this.prepareFDCRequest(`TODO`);
+                if (!abiEncodedRequest) {
+                    throw new Error('Failed to prepare FDC request');
+                }
+
+                const publicClient = createPublicClient({
+                    chain: flareTestnet,
+                    transport: http()
+                });
+
+                const requestFee = await publicClient.readContract({
+                    address: "0x191a1282Ac700edE65c5B0AaF313BAcC3eA7fC7e",
+                    abi: [
+                        {
+                            "inputs": [
+                                {
+                                    "internalType": "bytes",
+                                    "name": "_data",
+                                    "type": "bytes"
+                                }
+                            ],
+                            "name": "getRequestFee",
+                            "outputs": [
+                                {
+                                    "internalType": "uint256",
+                                    "name": "_fee",
+                                    "type": "uint256"
+                                }
+                            ],
+                            "stateMutability": "view",
+                            "type": "function"
+                        },
+                    ],
+                    functionName: 'getRequestFee',
+                    args: [abiEncodedRequest as `0x${string}`]
+                });
+
+                console.log(`[MarketService] Request fee: ${requestFee}`);
+            }
+        } catch (error) {
+            console.error('Error resolving market:', error);
+            return { success: false, error: 'Error resolving market' };
+        }
+    }
+
+    async prepareFDCRequest(url: string): Promise<string | undefined> {
+        try {
+            const response = await fetch("https://jq-verifier-test.flare.rocks/JsonApi/prepareRequest", {
+                method: "POST",
+                headers: {
+                    "X-API-KEY": "flare-oxford-2025",
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    "attestationType": "0x494a736f6e417069000000000000000000000000000000000000000000000000",
+                    "sourceId": "0x5745423200000000000000000000000000000000000000000000000000000000",
+                    "requestBody": {
+                        "url": url,
+                        "postprocessJq": ".",
+                        "abi_signature": "{\"components\": [{\"internalType\": \"uint256\",\"name\": \"outcome\",\"type\": \"uint256\"}],\"name\": \"task\",\"type\": \"tuple\"}"
+                    }
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to prepare FDC request');
+            }
+
+            const data = await response.json();
+            if (data.status != "VALID") {
+                throw new Error('FDC request returned invalid status');
+            }
+
+            const abiEncodedRequest = data.abiEncodedRequest;
+            if (!abiEncodedRequest) {
+                throw new Error('FDC request returned invalid ABI encoded request');
+            }
+
+            return abiEncodedRequest;
+        } catch (error) {
+            console.error('Error preparing FDC request:', error);
+            return undefined;
         }
     }
 

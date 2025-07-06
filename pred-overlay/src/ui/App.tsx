@@ -508,6 +508,8 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
         }
         const market = marketData.market;
 
+        await marketService.resolveMarket(market.id);
+
         // Validate bet amount
         const betAmountNum = parseFloat(betAmount);
         if (isNaN(betAmountNum) || betAmountNum <= 0) {
