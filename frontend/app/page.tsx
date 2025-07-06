@@ -51,7 +51,7 @@ export default function ProveMeWrong() {
 
               <div className="flex flex-col sm:flex-row gap-4">
                 <Button
-                  onClick={() => window.open("/extension/dist.zip", "_blank")}
+                  onClick={() => window.open("/api/download-extension", "_blank")}
                   className="bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 text-black px-8 py-4 rounded-2xl font-bold shadow-lg shadow-yellow-500/25 hover:shadow-yellow-500/40 transition-all duration-300 text-lg transform hover:scale-105"
                 >
                   🚀 Get Extension
