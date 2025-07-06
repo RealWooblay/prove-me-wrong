@@ -302,6 +302,30 @@ def prepare_fdc_request(
         logger.error(f"Error preparing FDC request: {e}")
         return None
 
+def get_fdc_proof(voting_round_id: int, request_bytes: str) -> Optional[str]:
+    try:
+        response = requests.post(
+            "https://ctn2-data-availability.flare.network/api/v1/fdc/proof-by-request-round",
+            headers={
+                "X-API-KEY": "flare-oxford-2025",
+                "Content-Type": "application/json"
+            },
+            json={
+                "votingRoundId": voting_round_id,
+                "requestBytes": request_bytes
+            }
+        )
+
+        if not response.ok:
+            logger.error(f"FDC proof request failed with status: {response.status_code}")
+            return None
+        
+        data = response.json()
+        return data
+    except Exception as e:
+        logger.error(f"Error getting FDC proof: {e}")
+        return None
+
 def resolve_market_onchain(market_id: str, url: str) -> bool:
     """Resolve a market on the blockchain using admin wallet"""
     
@@ -376,6 +400,15 @@ def resolve_market_onchain(market_id: str, url: str) -> bool:
 
         voting_round_id = (block_timestamp - 1658430000) / 90
         logger.info(f"Voting round ID: {voting_round_id}")
+
+        time.sleep(150)
+
+        proof = get_fdc_proof(voting_round_id, encoded_request)
+        if not proof:
+            logger.error("Failed to get FDC proof")
+            return False
+
+        logger.info(f"FDC proof: {proof}")
 
         return True
     except Exception as e:
