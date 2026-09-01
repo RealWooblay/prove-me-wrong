@@ -14,7 +14,8 @@ Set the following environment variables to enable blockchain integration:
 # Blockchain Configuration
 RPC_URL=https://sepolia.infura.io/v3/YOUR-PROJECT-ID
 PMW_ADDRESS=0x0000000000000000000000000000000000000000  # Deployed contract address
-ADMIN_PRIVATE_KEY=0x0000000000000000000000000000000000000000000000000000000000000000
+ADMIN_PRIVATE_KEY=<64-hex-private-key>
+FDC_VERIFIER_API_KEY=your-flare-verifier-api-key
 CHAIN_ID=11155111  # Sepolia testnet
 ```
 
@@ -23,6 +24,7 @@ CHAIN_ID=11155111  # Sepolia testnet
 - **RPC_URL**: Your Ethereum RPC endpoint (Infura, Alchemy, etc.)
 - **PMW_ADDRESS**: The deployed ProveMeWrong contract address
 - **ADMIN_PRIVATE_KEY**: Private key of the account that will call resolveMarket
+- **FDC_VERIFIER_API_KEY**: API key for the configured Flare FDC verifier
 - **CHAIN_ID**: Network chain ID (11155111 for Sepolia)
 
 ## Setup Steps
@@ -47,6 +49,7 @@ CHAIN_ID=11155111  # Sepolia testnet
    export RPC_URL="https://sepolia.infura.io/v3/YOUR-PROJECT-ID"
    export PMW_ADDRESS="0x...your_contract_address..."
    export ADMIN_PRIVATE_KEY="0x...your_private_key..."
+   export FDC_VERIFIER_API_KEY="your_flare_verifier_api_key"
    export CHAIN_ID="11155111"
    ```
 
@@ -119,4 +122,4 @@ export LOG_LEVEL=DEBUG
 - [ ] Implement retry logic for failed transactions
 - [ ] Add transaction monitoring and alerts
 - [ ] Support for multiple networks
-- [ ] Gas optimization strategies 
+- [ ] Gas optimization strategies

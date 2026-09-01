@@ -1,9 +1,0 @@
-{
-    "cleanUrls": false,
-    "redirects": [],
-    "rewrites": [],
-    "headers": [],
-    "buildCommand": "echo 'static project — nothing to build'",
-    "outputDirectory": "public",
-    "framework": null
-}

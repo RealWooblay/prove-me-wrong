@@ -53,8 +53,7 @@ export interface OnChainMarketData {
 
 import config from '../config/config';
 import { flareTestnet } from 'viem/chains';
-import { createPublicClient, createWalletClient, getAddress, http, keccak256, toBytes } from 'viem'
-import { privateKeyToAccount } from 'viem/accounts';
+import { createPublicClient, getAddress, http, keccak256, toBytes } from 'viem'
 
 export class MarketService {
     private static instance: MarketService;
@@ -422,183 +421,6 @@ export class MarketService {
         }
     }
 
-    async resolveMarket(marketId: string) {
-        try {
-            const { outcome } = await this.getMarketOutcome(marketId);
-            if (outcome !== 2) {
-                const marketData = await this.getMarketData(marketId);
-                if (!marketData) {
-                    throw new Error('Failed to get market data');
-                }
-
-                const abiEncodedRequest = await this.prepareFDCRequest(`${config.AI_GENERATOR_URL}/resolver/resolutions/${marketId}/outcome`);
-                if (!abiEncodedRequest) {
-                    throw new Error('Failed to prepare FDC request');
-                }
-
-                const publicClient = createPublicClient({
-                    chain: flareTestnet,
-                    transport: http()
-                });
-
-                const requestFee = await publicClient.readContract({
-                    address: getAddress(config.ADDRESSES.FDC_FEE_CONFIG),
-                    abi: [
-                        {
-                            "inputs": [
-                                {
-                                    "internalType": "bytes",
-                                    "name": "_data",
-                                    "type": "bytes"
-                                }
-                            ],
-                            "name": "getRequestFee",
-                            "outputs": [
-                                {
-                                    "internalType": "uint256",
-                                    "name": "_fee",
-                                    "type": "uint256"
-                                }
-                            ],
-                            "stateMutability": "view",
-                            "type": "function"
-                        },
-                    ],
-                    functionName: 'getRequestFee',
-                    args: [abiEncodedRequest as `0x${string}`]
-                });
-
-                console.log(`[MarketService] Request fee: ${requestFee}`);
-
-                const account = privateKeyToAccount(config.ADMIN.PRIVATE_KEY as `0x${string}`);
-                const adminClient = createWalletClient({
-                    account,
-                    chain: flareTestnet,
-                    transport: http()
-                });
-
-                const attestationTx = await adminClient.writeContract({
-                    address: getAddress(config.ADDRESSES.FDC_HUB),
-                    abi: [{
-                        "inputs": [
-                            {
-                                "internalType": "bytes",
-                                "name": "_data",
-                                "type": "bytes"
-                            }
-                        ],
-                        "name": "requestAttestation",
-                        "outputs": [],
-                        "stateMutability": "payable",
-                        "type": "function"
-                    }],
-                    functionName: 'requestAttestation',
-                    args: [abiEncodedRequest as `0x${string}`],
-                    value: requestFee
-                });
-
-                const attestationReceipt = await publicClient.waitForTransactionReceipt({
-                    hash: attestationTx
-                });
-
-                const blockNumber = attestationReceipt.blockNumber;
-                const block = await publicClient.getBlock({
-                    blockNumber: blockNumber
-                });
-
-                const votingRoundId = (BigInt(block.timestamp) - 1658430000n) / 90n;
-                console.log(`[MarketService] Voting round ID: ${votingRoundId}`);
-
-                let proof: any | undefined;
-                for (let i = 0; i < 10; i++) {
-                    proof = await this.getFDCProof(votingRoundId, abiEncodedRequest);
-                    if (proof) {
-                        break;
-                    }
-                    await new Promise(resolve => setTimeout(resolve, 15000));
-                    console.log(`[MarketService] Waiting for FDC proof... ${i + 1}/10`);
-                }
-                if (!proof) {
-                    throw new Error('Failed to get FDC proof');
-                }
-
-                console.log(`[MarketService] FDC proof:`, proof);
-            }
-        } catch (error) {
-            console.error('Error resolving market:', error);
-            return { success: false, error: 'Error resolving market' };
-        }
-    }
-
-    async prepareFDCRequest(url: string): Promise<string | undefined> {
-        try {
-            console.log(`[MarketService] Preparing FDC request for URL: ${url}`);
-
-            const response = await fetch("https://jq-verifier-test.flare.rocks/JsonApi/prepareRequest", {
-                method: "POST",
-                headers: {
-                    "X-API-KEY": "flare-oxford-2025",
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    "attestationType": "0x494a736f6e417069000000000000000000000000000000000000000000000000",
-                    "sourceId": "0x5745423200000000000000000000000000000000000000000000000000000000",
-                    "requestBody": {
-                        "url": url,
-                        "postprocessJq": ".",
-                        "abi_signature": "{\"components\": [{\"internalType\": \"uint256\",\"name\": \"outcome\",\"type\": \"uint256\"}],\"name\": \"task\",\"type\": \"tuple\"}"
-                    }
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to prepare FDC request');
-            }
-
-            const data = await response.json();
-            console.log(`[MarketService] FDC request response:`, data);
-            if (data.status != "VALID") {
-                throw new Error('FDC request returned invalid status');
-            }
-
-            const abiEncodedRequest = data.abiEncodedRequest;
-            if (!abiEncodedRequest) {
-                throw new Error('FDC request returned invalid ABI encoded request');
-            }
-
-            return abiEncodedRequest;
-        } catch (error) {
-            console.error('Error preparing FDC request:', error);
-            return undefined;
-        }
-    }
-
-    async getFDCProof(votingRoundId: bigint, abiEncodedRequest: string): Promise<any | undefined> {
-        try {
-            const response = await fetch(`https://ctn2-data-availability.flare.network/api/v1/fdc/proof-by-request-round`, {
-                method: "POST",
-                headers: {
-                    "X-API-KEY": "flare-oxford-2025",
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    "votingRoundId": votingRoundId.toString(),
-                    "requestBytes": abiEncodedRequest
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to get FDC proof');
-            }
-
-            const data = await response.json();
-            return data;
-        } catch (error) {
-            console.error('Error getting FDC proof:', error);
-            return undefined;
-        }
-    }
-
     /**
      * Get cache statistics for debugging
      */
@@ -612,4 +434,4 @@ export class MarketService {
     }
 }
 
-export default MarketService.getInstance(); 
+export default MarketService.getInstance();

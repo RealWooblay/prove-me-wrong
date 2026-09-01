@@ -41,7 +41,7 @@ app = FastAPI(title="Market Resolver Agent", version="1.0.0")
 
 # ASI-1 Mini API Configuration
 ASI_API_URL = "https://api.asi1.ai/v1/chat/completions"
-ASI_API_KEY = os.getenv("ASI_API_KEY", "sk_a1d55fd6b1ba47ddadc98bd1e8048e56ff00c4736c844a9db4aab791d33f0989")
+ASI_API_KEY = os.getenv("ASI_API_KEY")
 MODEL_NAME = "asi1-mini"
 
 # Generator API configuration
@@ -54,6 +54,7 @@ PMW_ADDRESS = os.getenv("PMW_ADDRESS", None)
 FDC_HUB_ADDRESS = os.getenv("FDC_HUB_ADDRESS", None)
 FDC_FEE_CONFIG_ADDRESS = os.getenv("FDC_FEE_CONFIG_ADDRESS", None)
 ADMIN_PRIVATE_KEY = os.getenv("ADMIN_PRIVATE_KEY", None)
+FDC_VERIFIER_API_KEY = os.getenv("FDC_VERIFIER_API_KEY")
 CHAIN_ID = int(os.getenv("CHAIN_ID", 0))
 
 # Database storage for resolutions (replaces file storage)
@@ -272,6 +273,10 @@ def prepare_fdc_request(
     url: str
 ) -> Optional[str]:
     """Prepare a request for the Flare FDC"""
+
+    if not FDC_VERIFIER_API_KEY:
+        logger.warning("FDC_VERIFIER_API_KEY not configured; skipping FDC request")
+        return None
     
     try:
         body = {
@@ -287,7 +292,7 @@ def prepare_fdc_request(
         response = requests.post(
             "https://jq-verifier-test.flare.rocks/JsonApi/prepareRequest",
             headers={
-                "X-API-KEY": "flare-oxford-2025",
+                "X-API-KEY": FDC_VERIFIER_API_KEY,
                 "Content-Type": "application/json"
             },
             json=body
@@ -309,11 +314,15 @@ def prepare_fdc_request(
         return None
 
 def get_fdc_proof(voting_round_id: int, request_bytes: str) -> Optional[str]:
+    if not FDC_VERIFIER_API_KEY:
+        logger.warning("FDC_VERIFIER_API_KEY not configured; skipping FDC proof request")
+        return None
+
     try:
         response = requests.post(
             "https://ctn2-data-availability.flare.network/api/v1/fdc/proof-by-request-round",
             headers={
-                "X-API-KEY": "flare-oxford-2025",
+                "X-API-KEY": FDC_VERIFIER_API_KEY,
                 "Content-Type": "application/json"
             },
             json={

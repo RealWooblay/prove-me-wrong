@@ -26,7 +26,7 @@ if [ ! -f "agents/.env" ]; then
     echo "📝 Creating .env file for local testing..."
     cat > agents/.env << EOF
 # ASI-1 Mini API Configuration
-ASI_API_KEY=sk_a1d55fd6b1ba47ddadc98bd1e8048e56ff00c4736c844a9db4aab791d33f0989
+ASI_API_KEY=your_asi_api_key
 
 # Railway URL Configuration
 RAILWAY_URL=https://prove-me-wrong-uagents-production.up.railway.app
@@ -62,9 +62,14 @@ railway service
 # Set environment variables for Railway
 echo "🔧 Setting Railway environment variables..."
 
+if [ -z "${ASI_API_KEY:-}" ]; then
+    echo "❌ ASI_API_KEY is not set. Export it before deploying."
+    exit 1
+fi
+
 # Set all environment variables at once
 railway variables \
-    --set "ASI_API_KEY=sk_a1d55fd6b1ba47ddadc98bd1e8048e56ff00c4736c844a9db4aab791d33f0989" \
+    --set "ASI_API_KEY=$ASI_API_KEY" \
     --set "RAILWAY_URL=https://prove-me-wrong-uagents-production.up.railway.app" \
     --set "DATABASE_URL=sqlite:///./markets.db" \
     --set "RPC_URL=https://rpc.ankr.com/polygon" \
@@ -114,4 +119,4 @@ echo ""
 echo "📋 View logs:"
 echo "   railway logs"
 echo ""
-echo "🎯 The μAgent system is now running with inter-agent communication!" 
+echo "🎯 The μAgent system is now running with inter-agent communication!"

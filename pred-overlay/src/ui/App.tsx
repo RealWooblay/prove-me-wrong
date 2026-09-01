@@ -514,8 +514,6 @@ export function App({ marketId, title }: { marketId: string; title: string }) {
         const onchainData = await marketService.getOnChainData(market.id);
         console.log(`[App] Onchain data:`, onchainData);
 
-        await marketService.resolveMarket(market.id);
-
         // Validate bet amount
         const betAmountNum = parseFloat(betAmount);
         if (isNaN(betAmountNum) || betAmountNum <= 0) {

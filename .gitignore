@@ -1,4 +1,6 @@
 # Data files (markets and resolutions)
+*.db
+*.sqlite
 ai/generator/markets/*.json
 ai/resolver/resolutions/*.json
 ai/generator/markets/active/*.json
@@ -67,4 +69,9 @@ logs/
 
 # Temporary files
 *.tmp
-*.temp 
+*.temp
+
+# Generated Hardhat Ignition output
+contracts/ignition/deployments/**/artifacts/
+contracts/ignition/deployments/**/build-info/
+contracts/ignition/deployments/**/journal.jsonl

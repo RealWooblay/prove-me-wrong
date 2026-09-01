@@ -60,7 +60,7 @@ logger.info(f"   CHAIN_ID from env: {os.getenv('CHAIN_ID', 'Not set')}")
 
 # ASI-1 Mini API Configuration
 ASI_API_URL = "https://api.asi1.ai/v1/chat/completions"
-ASI_API_KEY = os.getenv("ASI_API_KEY", "sk_a1d55fd6b1ba47ddadc98bd1e8048e56ff00c4736c844a9db4aab791d33f0989")
+ASI_API_KEY = os.getenv("ASI_API_KEY")
 MODEL_NAME = "asi1-mini"
 
 # Database storage for markets (replaces file storage)
